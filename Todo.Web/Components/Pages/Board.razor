@@ -1,0 +1,198 @@
+@page "/board/{Slug}"
+@using Markdig
+@using Microsoft.AspNetCore.Components
+@using Todo.Core.Models
+@using Todo.Core.Services
+@inject ProjectService ProjectService
+@inject TicketService TicketService
+@rendermode InteractiveServer
+
+<PageTitle>@(_project?.Name ?? "Board")</PageTitle>
+
+@if (_project is null)
+{
+    <p>Projet introuvable.</p>
+}
+else
+{
+    <div class="page-header">
+        <a href="/" class="back-link">&larr; Projets</a>
+        <h1>@_project.Name</h1>
+    </div>
+
+    <div class="board">
+        @foreach (var status in _statuses)
+        {
+            <div class="column column-@GetStatusClass(status)"
+                 @ondragover:preventDefault
+                 @ondrop="() => OnDrop(status)">
+                <div class="column-header">
+                    <span class="status-pill status-@GetStatusClass(status)">@GetStatusLabel(status)</span>
+                    <span class="count">@GetTickets(status).Count</span>
+                </div>
+                <div class="column-body">
+                    @foreach (var ticket in GetTickets(status))
+                    {
+                        <div class="ticket-card @(_selectedTicket?.Id == ticket.Id ? "selected" : "")"
+                             draggable="true"
+                             @ondragstart="() => OnDragStart(ticket)"
+                             @onclick="() => SelectTicket(ticket)">
+                            <div class="ticket-card-top">
+                                <span class="ticket-id">#@ticket.Id</span>
+                            </div>
+                            <span class="ticket-title">@ticket.Title</span>
+                            <small class="ticket-author">@ticket.CreatedBy</small>
+                        </div>
+                    }
+                </div>
+                @if (status == TicketStatus.Backlog)
+                {
+                    <div class="add-ticket">
+                        <input @bind="_newTicketTitle" @bind:event="oninput" placeholder="Nouveau ticket..."
+                               @onkeydown="HandleTicketKeyDown" />
+                        <button @onclick="CreateTicket" disabled="@string.IsNullOrWhiteSpace(_newTicketTitle)">+</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_selectedTicket is not null)
+    {
+        <div class="ticket-modal-overlay" @onclick="ClosePanel">
+            <div class="ticket-panel" @onclick:stopPropagation>
+            <div class="ticket-panel-header">
+                <h2>#@_selectedTicket.Id - @_selectedTicket.Title</h2>
+                <div>
+                    <button class="delete-btn" @onclick="DeleteSelectedTicket">Supprimer</button>
+                    <button class="close-btn" @onclick="ClosePanel">&times;</button>
+                </div>
+            </div>
+            <div class="ticket-panel-body">
+                <div class="ticket-desc markdown">
+                    @if (_selectedTicket.Description is { Length: > 0 })
+                    {
+                        @((MarkupString)Markdown.ToHtml(_selectedTicket.Description, _mdPipeline))
+                    }
+                    else
+                    {
+                        <p>Pas de description.</p>
+                    }
+                </div>
+                <div class="ticket-meta">
+                    <span>Statut: <strong>@GetStatusLabel(_selectedTicket.Status)</strong></span>
+                    <span>Par: @_selectedTicket.CreatedBy</span>
+                    <span>Créé: @_selectedTicket.CreatedAt.ToString("g")</span>
+                </div>
+
+                <h3>Commentaires</h3>
+                <div class="comments">
+                    @foreach (var comment in _selectedTicket.Comments)
+                    {
+                        <div class="comment">
+                            <strong>@comment.Author</strong> <small>@comment.CreatedAt.ToString("g")</small>
+                            <div class="markdown">@((MarkupString)Markdown.ToHtml(comment.Content, _mdPipeline))</div>
+                        </div>
+                    }
+                </div>
+                <div class="add-comment">
+                    <textarea @bind="_newComment" placeholder="Ajouter un commentaire..."></textarea>
+                    <button @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(_newComment)">Envoyer</button>
+                </div>
+            </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private Project? _project;
+    private List<Ticket> _tickets = [];
+    private Ticket? _selectedTicket;
+    private Ticket? _draggedTicket;
+    private string _newTicketTitle = "";
+    private string _newComment = "";
+
+    private static readonly TicketStatus[] _statuses = Enum.GetValues<TicketStatus>();
+    private static readonly MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _project = await ProjectService.GetProjectAsync(Slug);
+        if (_project is not null)
+            _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private List<Ticket> GetTickets(TicketStatus status) =>
+        _tickets.Where(t => t.Status == status).ToList();
+
+    private static string GetStatusLabel(TicketStatus status) => status switch
+    {
+        TicketStatus.Backlog => "Backlog",
+        TicketStatus.Todo => "Todo",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.Blocked => "Blocked",
+        TicketStatus.OwnerReview => "Owner Review",
+        TicketStatus.Done => "Done",
+        _ => status.ToString()
+    };
+
+    private static string GetStatusClass(TicketStatus status) => status switch
+    {
+        TicketStatus.Backlog => "backlog",
+        TicketStatus.Todo => "todo",
+        TicketStatus.InProgress => "inprogress",
+        TicketStatus.Blocked => "blocked",
+        TicketStatus.OwnerReview => "ownerreview",
+        TicketStatus.Done => "done",
+        _ => "default"
+    };
+
+    private void OnDragStart(Ticket ticket) => _draggedTicket = ticket;
+
+    private async Task OnDrop(TicketStatus newStatus)
+    {
+        if (_draggedTicket is null) return;
+        await TicketService.MoveTicketAsync(Slug, _draggedTicket.Id, newStatus);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _draggedTicket = null;
+    }
+
+    private async Task CreateTicket()
+    {
+        if (string.IsNullOrWhiteSpace(_newTicketTitle)) return;
+        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim());
+        _newTicketTitle = "";
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task HandleTicketKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTicket();
+    }
+
+    private async Task SelectTicket(Ticket ticket)
+    {
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticket.Id);
+    }
+
+    private void ClosePanel() => _selectedTicket = null;
+
+    private async Task DeleteSelectedTicket()
+    {
+        if (_selectedTicket is null) return;
+        await TicketService.DeleteTicketAsync(Slug, _selectedTicket.Id);
+        _selectedTicket = null;
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task AddComment()
+    {
+        if (_selectedTicket is null || string.IsNullOrWhiteSpace(_newComment)) return;
+        await TicketService.AddCommentAsync(Slug, _selectedTicket.Id, _newComment.Trim());
+        _newComment = "";
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+    }
+}

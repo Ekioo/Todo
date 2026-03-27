@@ -1,0 +1,21 @@
+using Microsoft.EntityFrameworkCore;
+using Todo.Core.Models;
+
+namespace Todo.Core.Data;
+
+public class RegistryDbContext : DbContext
+{
+    public DbSet<Project> Projects => Set<Project>();
+
+    private readonly string _dbPath;
+
+    public RegistryDbContext(string dbPath)
+    {
+        _dbPath = dbPath;
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder options)
+    {
+        options.UseSqlite($"Data Source={_dbPath}");
+    }
+}

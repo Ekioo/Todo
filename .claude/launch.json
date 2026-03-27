@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "todo-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Todo.Web"],
+      "port": 5230
+    }
+  ]
+}

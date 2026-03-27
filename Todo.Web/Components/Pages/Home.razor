@@ -1,0 +1,53 @@
+@page "/"
+@using Todo.Core.Models
+@using Todo.Core.Services
+@inject ProjectService ProjectService
+@rendermode InteractiveServer
+
+<PageTitle>Todo - Projets</PageTitle>
+
+<div class="page-header">
+    <h1>Projets</h1>
+</div>
+
+<div class="project-list">
+    @if (_projects is not null)
+    {
+        @foreach (var project in _projects)
+        {
+            <a class="project-card" href="/board/@project.Slug">
+                <h3>@project.Name</h3>
+                <small>@project.Slug</small>
+            </a>
+        }
+    }
+</div>
+
+<div class="create-project">
+    <input @bind="_newProjectName" @bind:event="oninput" placeholder="Nom du nouveau projet..."
+           @onkeydown="HandleKeyDown" />
+    <button @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(_newProjectName)">Créer</button>
+</div>
+
+@code {
+    private List<Project>? _projects;
+    private string _newProjectName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _projects = await ProjectService.ListProjectsAsync();
+    }
+
+    private async Task CreateProject()
+    {
+        if (string.IsNullOrWhiteSpace(_newProjectName)) return;
+        await ProjectService.CreateProjectAsync(_newProjectName.Trim());
+        _newProjectName = "";
+        _projects = await ProjectService.ListProjectsAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateProject();
+    }
+}
