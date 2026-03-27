@@ -79,6 +79,18 @@ public static class Endpoints
             return comment is null ? Results.NotFound() : Results.Created($"/api/projects/{slug}/tickets/{id}", comment);
         }).WithTags("Comments");
 
+        api.MapPatch("/projects/{slug}/tickets/{id:int}/comments/{commentId:int}", async (string slug, int id, int commentId, UpdateCommentRequest req, TicketService ts) =>
+        {
+            var ok = await ts.UpdateCommentAsync(slug, id, commentId, req.Content, req.Author);
+            return ok ? Results.NoContent() : Results.NotFound();
+        }).WithTags("Comments");
+
+        api.MapDelete("/projects/{slug}/tickets/{id:int}/comments/{commentId:int}", async (string slug, int id, int commentId, TicketService ts) =>
+        {
+            var ok = await ts.DeleteCommentAsync(slug, id, commentId);
+            return ok ? Results.NoContent() : Results.NotFound();
+        }).WithTags("Comments");
+
         // Activity
         api.MapGet("/projects/{slug}/tickets/{id:int}/activity", async (string slug, int id, TicketService ts) =>
         {

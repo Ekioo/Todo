@@ -264,6 +264,23 @@ public class TicketService
         return true;
     }
 
+    public async Task<bool> DeleteCommentAsync(string projectSlug, int ticketId, int commentId, string author = "owner")
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureActivityTableAsync(db);
+        var comment = await db.Comments.FindAsync(commentId);
+        if (comment is null || comment.TicketId != ticketId) return false;
+        db.Comments.Remove(comment);
+        db.ActivityEntries.Add(new ActivityEntry
+        {
+            TicketId = ticketId,
+            Author = author,
+            Text = "a supprimé un commentaire"
+        });
+        await db.SaveChangesAsync();
+        return true;
+    }
+
     public async Task ReorderTicketAsync(string projectSlug, int ticketId, TicketStatus newStatus, int targetIndex)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
