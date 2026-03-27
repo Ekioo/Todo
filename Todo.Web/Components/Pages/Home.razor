@@ -15,10 +15,13 @@
     {
         @foreach (var project in _projects)
         {
-            <a class="project-card" href="/board/@project.Slug">
-                <h3>@project.Name</h3>
-                <small>@project.Slug</small>
-            </a>
+            <div class="project-card-wrap">
+                <a class="project-card" href="/board/@project.Slug">
+                    <h3>@project.Name</h3>
+                    <small>@project.Slug</small>
+                </a>
+                <button class="project-delete-btn" title="Supprimer" @onclick="() => AskDelete(project)">&times;</button>
+            </div>
         }
     }
 </div>
@@ -26,12 +29,27 @@
 <div class="create-project">
     <input @bind="_newProjectName" @bind:event="oninput" placeholder="Nom du nouveau projet..."
            @onkeydown="HandleKeyDown" />
-    <button @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(_newProjectName)">Créer</button>
+    <button @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(_newProjectName)">Cr&#233;er</button>
 </div>
+
+@if (_deleteTarget is not null)
+{
+    <div class="confirm-overlay" @onclick="CancelDelete">
+        <div class="confirm-dialog" @onclick:stopPropagation>
+            <p>Supprimer le projet <strong>@_deleteTarget.Name</strong>&#160;?</p>
+            <p class="confirm-warning">Tous les tickets et donn&#233;es associ&#233;s seront d&#233;finitivement supprim&#233;s.</p>
+            <div class="confirm-actions">
+                <button class="cancel-btn" @onclick="CancelDelete">Annuler</button>
+                <button class="delete-btn" @onclick="ConfirmDelete">Supprimer</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private List<Project>? _projects;
     private string _newProjectName = "";
+    private Project? _deleteTarget;
 
     protected override async Task OnInitializedAsync()
     {
@@ -49,5 +67,16 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await CreateProject();
+    }
+
+    private void AskDelete(Project project) => _deleteTarget = project;
+    private void CancelDelete() => _deleteTarget = null;
+
+    private async Task ConfirmDelete()
+    {
+        if (_deleteTarget is null) return;
+        await ProjectService.DeleteProjectAsync(_deleteTarget.Slug);
+        _deleteTarget = null;
+        _projects = await ProjectService.ListProjectsAsync();
     }
 }

@@ -60,6 +60,23 @@ public partial class ProjectService
         return await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
     }
 
+    public async Task<bool> DeleteProjectAsync(string slug)
+    {
+        await using var registry = new RegistryDbContext(_registryPath);
+        await registry.Database.EnsureCreatedAsync();
+        var project = await registry.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
+        if (project is null) return false;
+        registry.Projects.Remove(project);
+        await registry.SaveChangesAsync();
+
+        // Delete the project's SQLite file if it exists
+        var dbPath = GetProjectDbPath(slug);
+        if (File.Exists(dbPath)) File.Delete(dbPath);
+        if (File.Exists(dbPath + "-shm")) File.Delete(dbPath + "-shm");
+        if (File.Exists(dbPath + "-wal")) File.Delete(dbPath + "-wal");
+        return true;
+    }
+
     public string GetProjectDbPath(string slug) => Path.Combine(_dataDir, "projects", $"{slug}.db");
 
     public TodoDbContext GetProjectDb(string slug)

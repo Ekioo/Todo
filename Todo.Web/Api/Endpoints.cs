@@ -26,6 +26,12 @@ public static class Endpoints
             return project is null ? Results.NotFound() : Results.Ok(project);
         }).WithTags("Projects");
 
+        api.MapDelete("/projects/{slug}", async (string slug, ProjectService ps) =>
+        {
+            var deleted = await ps.DeleteProjectAsync(slug);
+            return deleted ? Results.NoContent() : Results.NotFound();
+        }).WithTags("Projects");
+
         // Tickets
         api.MapGet("/projects/{slug}/tickets", async (string slug, TicketStatus? status, TicketService ts) =>
             Results.Ok(await ts.ListTicketsAsync(slug, status)))

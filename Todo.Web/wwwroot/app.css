@@ -59,6 +59,32 @@ a:hover { color: var(--accent-hover); }
 
 /* Project list */
 .project-list { display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 1.5rem; }
+.project-card-wrap {
+    position: relative;
+    display: inline-flex;
+}
+.project-card-wrap .project-delete-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.project-card-wrap:hover .project-delete-btn { opacity: 1; }
+.project-card-wrap .project-delete-btn:hover {
+    background: var(--s-blocked);
+    color: #fff;
+}
 .project-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -75,6 +101,35 @@ a:hover { color: var(--accent-hover); }
 }
 .project-card h3 { color: var(--text); margin: 0 0 0.2rem; font-size: 1rem; }
 .project-card small { color: var(--text-muted); font-size: 0.78rem; }
+
+/* Confirm delete overlay */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+.confirm-dialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 1.75rem;
+    max-width: 380px;
+    width: 94vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.confirm-dialog p { margin: 0 0 0.5rem; color: var(--text); font-size: 0.95rem; }
+.confirm-warning { color: var(--text-muted) !important; font-size: 0.83rem !important; }
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+}
 
 .create-project {
     padding: 1rem 1.5rem 1.5rem;
