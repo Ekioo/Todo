@@ -433,7 +433,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 /* Edit textarea / actions */
 .edit-textarea {
     width: 100%;
-    min-height: 100px;
+    min-height: 240px;
     margin-bottom: 0.5rem;
 }
 .edit-actions {

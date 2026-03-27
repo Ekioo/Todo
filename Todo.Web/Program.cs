@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Todo.Core.Services;
 using Todo.Web.Api;
 using Todo.Web.Components;
@@ -12,6 +14,8 @@ builder.Services.AddSingleton(new ProjectService(dataDir));
 builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<LabelService>();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
 builder.Services.AddRazorComponents()
@@ -34,12 +38,20 @@ app.UseAntiforgery();
 app.MapOpenApi();
 app.MapTodoApi();
 
-app.MapGet("/api/docs", () =>
+string? _cachedApiDocs = null;
+
+app.MapGet("/api/docs", async (HttpContext ctx) =>
 {
-    var mdPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "API.md");
-    if (!File.Exists(mdPath)) return Results.NotFound("API.md not found");
-    return Results.Text(File.ReadAllText(mdPath), "text/markdown; charset=utf-8");
-});
+    if (_cachedApiDocs is null)
+    {
+        var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        using var client = new HttpClient();
+        var json = await client.GetStringAsync($"{baseUrl}/openapi/v1.json");
+        using var doc = JsonDocument.Parse(json);
+        _cachedApiDocs = OpenApiMarkdownGenerator.Generate(doc);
+    }
+    return Results.Text(_cachedApiDocs, "text/markdown; charset=utf-8");
+}).ExcludeFromDescription();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
