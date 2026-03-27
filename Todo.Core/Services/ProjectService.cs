@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Todo.Core.Data;
 using Todo.Core.Models;
@@ -69,8 +70,9 @@ public partial class ProjectService
         registry.Projects.Remove(project);
         await registry.SaveChangesAsync();
 
-        // Delete the project's SQLite file if it exists
+        // Close any pooled connections then delete the project's SQLite files
         var dbPath = GetProjectDbPath(slug);
+        SqliteConnection.ClearAllPools();
         if (File.Exists(dbPath)) File.Delete(dbPath);
         if (File.Exists(dbPath + "-shm")) File.Delete(dbPath + "-shm");
         if (File.Exists(dbPath + "-wal")) File.Delete(dbPath + "-wal");

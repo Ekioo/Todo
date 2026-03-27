@@ -844,3 +844,13 @@ button:disabled { opacity: 0.35; cursor: default; }
     padding: 0.6rem 0;
     border-bottom: 1px solid var(--border);
 }
+
+/* Panel footer actions (delete at bottom-left) */
+.panel-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-top: 1rem;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+}

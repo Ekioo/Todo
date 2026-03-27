@@ -72,15 +72,15 @@ else
     @* ── Create ticket popup ── *@
     @if (_showCreatePopup)
     {
-        <div class="ticket-modal-overlay" @onclick="CloseCreatePopup">
-            <div class="create-popup" @onclick:stopPropagation>
+        <div class="ticket-modal-overlay" @onmousedown="CloseCreatePopup">
+            <div class="create-popup" @onmousedown:stopPropagation>
                 <div class="create-popup-header">
                     <h2>Nouveau ticket</h2>
                     <button class="close-btn" @onclick="CloseCreatePopup">&times;</button>
                 </div>
                 <div class="create-popup-body">
                     <label class="field-label">Titre</label>
-                    <input class="create-input" @bind="_newTicketTitle" placeholder="Titre du ticket..." />
+                    <input class="create-input" @bind="_newTicketTitle" @bind:event="oninput" placeholder="Titre du ticket..." />
 
                     <label class="field-label">Description <span class="field-hint">(Markdown)</span></label>
                     <textarea class="create-textarea" @bind="_newTicketDescription" placeholder="Description..."></textarea>
@@ -133,8 +133,8 @@ else
 
     @if (_selectedTicket is not null)
     {
-        <div class="ticket-modal-overlay" @onclick="ClosePanel">
-            <div class="ticket-panel" @onclick:stopPropagation>
+        <div class="ticket-modal-overlay" @onmousedown="ClosePanel">
+            <div class="ticket-panel" @onmousedown:stopPropagation>
             <div class="ticket-panel-header">
                 @if (_editingTitle)
                 {
@@ -153,16 +153,6 @@ else
                     </div>
                 }
                 <div class="header-actions">
-                    @if (_confirmDelete)
-                    {
-                        <span class="confirm-delete-label">Supprimer ce ticket&#160;?</span>
-                        <button class="delete-btn" @onclick="DeleteSelectedTicket">Confirmer</button>
-                        <button class="cancel-btn" @onclick="() => _confirmDelete = false">Annuler</button>
-                    }
-                    else
-                    {
-                        <button class="delete-btn" @onclick="() => _confirmDelete = true">Supprimer</button>
-                    }
                     <button class="close-btn" @onclick="ClosePanel">&times;</button>
                 </div>
             </div>
@@ -272,8 +262,21 @@ else
                 </div>
 
                 <div class="add-comment">
-                    <textarea @bind="_newComment" placeholder="Ajouter un commentaire..."></textarea>
+                    <textarea @bind="_newComment" @bind:event="oninput" placeholder="Ajouter un commentaire..."></textarea>
                     <button @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(_newComment)">Envoyer</button>
+                </div>
+
+                <div class="panel-footer-actions">
+                    @if (_confirmDelete)
+                    {
+                        <span class="confirm-delete-label">Supprimer ce ticket&#160;?</span>
+                        <button class="delete-btn" @onclick="DeleteSelectedTicket">Confirmer</button>
+                        <button class="cancel-btn" @onclick="() => _confirmDelete = false">Annuler</button>
+                    }
+                    else
+                    {
+                        <button class="delete-btn" @onclick="() => _confirmDelete = true">Supprimer ce ticket</button>
+                    }
                 </div>
             </div>
             </div>
