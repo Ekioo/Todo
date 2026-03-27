@@ -9,6 +9,7 @@
 @inject TicketService TicketService
 @inject LabelService LabelService
 @inject ColumnService ColumnService
+@inject MemberService MemberService
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 
@@ -23,36 +24,49 @@ else
     <div class="page-header">
         <a href="/" class="back-link">&larr; Projets</a>
         <h1>@_project.Name</h1>
+        <div class="header-right">
+            @if (_showAddColumn)
+            {
+                <div class="add-column-form">
+                    <input @bind="_newColumnName" @bind:event="oninput" placeholder="Nom de la colonne..." />
+                    <input type="color" @bind="_newColumnColor" />
+                    <button class="icon-btn save-btn" @onclick="AddColumn" disabled="@string.IsNullOrWhiteSpace(_newColumnName)">&#10003;</button>
+                    <button class="icon-btn cancel-icon-btn" @onclick="() => _showAddColumn = false">&#10005;</button>
+                </div>
+            }
+            else
+            {
+                <button class="header-action-btn" @onclick="() => _showAddColumn = true">+ Colonne</button>
+            }
+            <button class="header-action-btn" @onclick="() => _showLabelManager = true" title="Gérer les labels">&#127991; Labels</button>
+            <button class="header-action-btn" @onclick="() => _showMemberManager = true" title="Gérer les membres">&#128101; Membres</button>
+        </div>
     </div>
 
     <div class="board">
         @foreach (var col in _columns)
         {
-            <div class="column"
+            var colIndex = _columns.IndexOf(col);
+            <div class="column @(_draggedColumn?.Id == col.Id ? "column-dragging" : "")"
                  style="--col-color: @col.Color"
                  @ondragover="(e) => OnDragOverColumn(col.Name, e)"
                  @ondragover:preventDefault
-                 @ondrop="() => OnDrop(col.Name)">
-                <div class="column-header">
+                 @ondrop="() => OnDrop(col.Name)"
+                 @ondrop:preventDefault>
+                @if (_draggedColumn is not null && _draggedTicket is null && _colDropIndex == colIndex && _draggedColumn.Id != col.Id)
+                {
+                    <div class="column-drop-indicator"></div>
+                }
+                <div class="column-header"
+                     draggable="true"
+                     @ondragstart="() => OnColumnDragStart(col)"
+                     @ondragend="OnColumnDragEnd"
+                     @ondragover="(e) => OnColumnDragOver(colIndex, e)"
+                     @ondragover:preventDefault
+                     @ondrop="OnColumnDrop"
+                     @ondrop:preventDefault>
                     <span class="status-pill" style="color: @col.Color; background: color-mix(in srgb, @col.Color 12%, transparent)">@col.Name</span>
                     <span class="count">@GetTickets(col.Name).Count</span>
-                    @if (_confirmDeleteColumnId == col.Id)
-                    {
-                        <div class="column-delete-confirm">
-                            <select @bind="_deleteColumnMoveTo">
-                                @foreach (var other in _columns.Where(c => c.Id != col.Id))
-                                {
-                                    <option value="@other.Name">@other.Name</option>
-                                }
-                            </select>
-                            <button class="icon-btn save-btn" @onclick="() => DeleteColumn(col.Id)">&#10003;</button>
-                            <button class="icon-btn cancel-icon-btn" @onclick="() => _confirmDeleteColumnId = null">&#10005;</button>
-                        </div>
-                    }
-                    else
-                    {
-                        <button class="column-delete-btn" title="Supprimer cette colonne" @onclick="() => StartDeleteColumn(col.Id)">&#10005;</button>
-                    }
                 </div>
                 <div class="column-body">
                     @{ var columnTickets = GetTickets(col.Name); }
@@ -85,7 +99,13 @@ else
                                     }
                                 </div>
                             }
-                            <small class="ticket-author">@ticket.CreatedBy</small>
+                            <div class="ticket-card-bottom">
+                                @if (!string.IsNullOrEmpty(ticket.AssignedTo))
+                                {
+                                    <span class="assignee-badge" title="@ticket.AssignedTo">@ticket.AssignedTo</span>
+                                }
+                                <small class="ticket-author">@ticket.CreatedBy</small>
+                            </div>
                         </div>
                     }
                     @if (_dragOverStatus == col.Name && _dragInsertIndex >= columnTickets.Count && _draggedTicket is not null)
@@ -101,22 +121,58 @@ else
                 }
             </div>
         }
-        <div class="column column-add">
-            @if (_showAddColumn)
-            {
-                <div class="add-column-form">
-                    <input @bind="_newColumnName" @bind:event="oninput" placeholder="Nom de la colonne..." />
-                    <input type="color" @bind="_newColumnColor" />
-                    <button class="icon-btn save-btn" @onclick="AddColumn" disabled="@string.IsNullOrWhiteSpace(_newColumnName)">&#10003;</button>
-                    <button class="icon-btn cancel-icon-btn" @onclick="() => _showAddColumn = false">&#10005;</button>
-                </div>
-            }
-            else
-            {
-                <button class="add-column-btn" @onclick="() => _showAddColumn = true">+ Colonne</button>
-            }
-        </div>
+
     </div>
+
+    @* ── Trash drop zone (visible during drag) ── *@
+    @if (_draggedTicket is not null || _draggedColumn is not null)
+    {
+        <div class="trash-zone @(_trashHover ? "trash-zone-hover" : "")"
+             @ondragover="OnTrashDragOver"
+             @ondragover:preventDefault
+             @ondragleave="() => _trashHover = false"
+             @ondrop="OnTrashDrop"
+             @ondrop:preventDefault>
+            <span class="trash-icon">&#128465;</span>
+            <span>Supprimer</span>
+        </div>
+    }
+
+    @* ── Trash confirmation dialog ── *@
+    @if (_trashConfirmColumn is not null)
+    {
+        <div class="confirm-overlay">
+            <div class="confirm-dialog">
+                <p>Supprimer la colonne «&#160;@_trashConfirmColumn.Name&#160;»&#160;?</p>
+                @if (_columns.Count > 1)
+                {
+                    <p class="confirm-warning">Les tickets seront déplacés vers&#160;:</p>
+                    <select @bind="_deleteColumnMoveTo" style="margin-bottom:0.5rem;width:100%">
+                        @foreach (var other in _columns.Where(c => c.Id != _trashConfirmColumn.Id))
+                        {
+                            <option value="@other.Name">@other.Name</option>
+                        }
+                    </select>
+                }
+                <div class="confirm-actions">
+                    <button class="cancel-btn" @onclick="CancelTrash">Annuler</button>
+                    <button class="delete-btn" @onclick="ConfirmTrashColumn">Supprimer</button>
+                </div>
+            </div>
+        </div>
+    }
+    @if (_trashConfirmTicket is not null)
+    {
+        <div class="confirm-overlay">
+            <div class="confirm-dialog">
+                <p>Supprimer le ticket #@_trashConfirmTicket.Id «&#160;@_trashConfirmTicket.Title&#160;»&#160;?</p>
+                <div class="confirm-actions">
+                    <button class="cancel-btn" @onclick="CancelTrash">Annuler</button>
+                    <button class="delete-btn" @onclick="ConfirmTrashTicket">Supprimer</button>
+                </div>
+            </div>
+        </div>
+    }
 
     @* ── Create ticket popup ── *@
     @if (_showCreatePopup)
@@ -171,6 +227,17 @@ else
                             <button class="label-add-btn" @onclick="() => _showNewLabelForm = true">+ Label</button>
                         }
                     </div>
+
+                    <label class="field-label">Assigner à</label>
+                    <div class="assignee-picker-wrapper">
+                        <select class="assignee-select" @bind="_newTicketAssignedTo">
+                            <option value="">— Non assigné —</option>
+                            @foreach (var member in _allMembers)
+                            {
+                                <option value="@member.Name">@member.Name</option>
+                            }
+                        </select>
+                    </div>
                 </div>
                 <div class="create-popup-footer">
                     <button class="cancel-btn" @onclick="CloseCreatePopup">Annuler</button>
@@ -185,28 +252,125 @@ else
         <div class="ticket-modal-overlay" @onmousedown="ClosePanel">
             <div class="ticket-panel" @onmousedown:stopPropagation>
             <div class="ticket-panel-header">
-                @if (_editingTitle)
-                {
-                    <div class="edit-title-row">
+                <div class="editable-field">
+                    <div class="priority-dot-btn" @onclick="() => _showPriorityPicker = !_showPriorityPicker" title="Changer la priorité">
+                        <span class="priority-dot priority-@GetPriorityClass(_selectedTicket.Priority)"></span>
+                    </div>
+                    @if (_showPriorityPicker)
+                    {
+                        <div class="priority-dropdown">
+                            @foreach (var p in Enum.GetValues<TicketPriority>())
+                            {
+                                <button class="priority-option @(_selectedTicket.Priority == p ? "active" : "")"
+                                        @onclick="() => SetPriorityAndClose(p)">
+                                    <span class="priority-dot priority-@GetPriorityClass(p)"></span>
+                                    @GetPriorityLabel(p)
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (_editingTitle)
+                    {
                         <span class="ticket-id-prefix">#@_selectedTicket.Id &mdash;</span>
                         <input class="edit-title-input" @bind="_editTitle" @onkeydown="HandleTitleKeyDown" />
                         <button class="icon-btn save-btn" title="Enregistrer" @onclick="SaveTitle">&#10003;</button>
                         <button class="icon-btn cancel-icon-btn" title="Annuler" @onclick="() => _editingTitle = false">&#10005;</button>
-                    </div>
-                }
-                else
-                {
-                    <div class="editable-field">
+                    }
+                    else
+                    {
                         <h2>#@_selectedTicket.Id &mdash; @_selectedTicket.Title</h2>
                         <button class="icon-btn pencil-btn" title="Modifier le titre" @onclick="StartEditTitle">&#9998;</button>
-                    </div>
-                }
+                    }
+                </div>
                 <div class="header-actions">
                     <button class="close-btn" @onclick="ClosePanel">&times;</button>
                 </div>
             </div>
-            <div class="ticket-panel-body">
-                <div class="editable-section">
+
+            @* ── Labels row ── *@
+            <div class="ticket-labels-row">
+                @foreach (var label in _selectedTicket.Labels)
+                {
+                    var lid = label.Id;
+                    <span class="label-pill label-removable" style="--lc: @label.Color">
+                        @label.Name
+                        <button class="label-remove-btn" @onclick="() => RemoveLabel(lid)">&times;</button>
+                    </span>
+                }
+                <div class="label-autocomplete">
+                    <input class="label-autocomplete-input"
+                           placeholder="+ Label..."
+                           @bind="_labelSearch"
+                           @bind:event="oninput"
+                           @onfocus="() => _labelDropdownOpen = true"
+                           @onblur="OnLabelBlur"
+                           @onkeydown="HandleLabelKeyDown" />
+                    @if (_labelDropdownOpen && GetLabelSuggestions().Any())
+                    {
+                        <div class="label-dropdown">
+                            @foreach (var suggestion in GetLabelSuggestions())
+                            {
+                                <button class="label-dropdown-item" style="--lc: @suggestion.Color"
+                                        @onmousedown="() => AddExistingLabel(suggestion)">
+                                    <span class="label-pill" style="--lc: @suggestion.Color">@suggestion.Name</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (_labelDropdownOpen && !string.IsNullOrWhiteSpace(_labelSearch) && !_allLabels.Any(l => l.Name.Equals(_labelSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <div class="label-dropdown @(GetLabelSuggestions().Any() ? "" : "label-dropdown-only")">
+                            <button class="label-dropdown-item label-create-item" @onmousedown="CreateAndAddLabel">
+                                Créer «&#160;@_labelSearch.Trim()&#160;»
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Assignee row ── *@
+            <div class="ticket-assignee-row">
+                <span class="section-label-sm">Assigné à&#160;:</span>
+                @if (!string.IsNullOrEmpty(_selectedTicket.AssignedTo))
+                {
+                    <span class="assignee-pill">
+                        @_selectedTicket.AssignedTo
+                        <button class="label-remove-btn" @onclick="RemoveAssignee">&times;</button>
+                    </span>
+                }
+                <div class="label-autocomplete">
+                    <input class="label-autocomplete-input"
+                           placeholder="@(string.IsNullOrEmpty(_selectedTicket.AssignedTo) ? "+ Assigner..." : "Changer...")"
+                           @bind="_assigneeSearch"
+                           @bind:event="oninput"
+                           @onfocus="() => _assigneeDropdownOpen = true"
+                           @onblur="OnAssigneeBlur"
+                           @onkeydown="HandleAssigneeKeyDown" />
+                    @if (_assigneeDropdownOpen && GetAssigneeSuggestions().Any())
+                    {
+                        <div class="label-dropdown">
+                            @foreach (var member in GetAssigneeSuggestions())
+                            {
+                                <button class="label-dropdown-item" @onmousedown="() => SetAssignee(member.Name)">
+                                    <span class="assignee-pill">@member.Name</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (_assigneeDropdownOpen && !string.IsNullOrWhiteSpace(_assigneeSearch) && !_allMembers.Any(m => m.Name.Equals(_assigneeSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <div class="label-dropdown @(GetAssigneeSuggestions().Any() ? "" : "label-dropdown-only")">
+                            <button class="label-dropdown-item label-create-item" @onmousedown="CreateAndAssign">
+                                Créer «&#160;@_assigneeSearch.Trim()&#160;»
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Two-column body ── *@
+            <div class="ticket-panel-columns">
+                <div class="ticket-col-left">
                     <div class="section-header">
                         <span class="section-label">Description</span>
                         @if (!_editingDescription)
@@ -235,99 +399,164 @@ else
                             }
                         </div>
                     }
-                </div>
 
-                <div class="ticket-meta">
-                    <span>Statut&#160;: <strong>@_selectedTicket.Status</strong></span>
-                    <span>Par&#160;: @_selectedTicket.CreatedBy</span>
-                    <span>Cr&#233;&#233;&#160;: @_selectedTicket.CreatedAt.ToString("g")</span>
-                </div>
-
-                <div class="priority-row">
-                    <span class="section-label">Priorit&#233;</span>
-                    <div class="priority-picker">
-                        @foreach (var p in Enum.GetValues<TicketPriority>())
-                        {
-                            <button class="priority-option @(_selectedTicket.Priority == p ? "active" : "")"
-                                    @onclick="() => SetPriority(p)">
-                                <span class="priority-dot priority-@GetPriorityClass(p)"></span>
-                                @GetPriorityLabel(p)
-                            </button>
-                        }
+                    <div class="ticket-meta">
+                        <span>Statut&#160;: <strong>@_selectedTicket.Status</strong></span>
+                        <span>Par&#160;: @_selectedTicket.CreatedBy</span>
+                        <span>Créé&#160;: @_selectedTicket.CreatedAt.ToString("g")</span>
                     </div>
-                </div>
 
-                @if (_selectedTicket.Labels.Count > 0)
-                {
-                    <div class="ticket-labels">
-                        @foreach (var label in _selectedTicket.Labels)
+                    <div class="panel-footer-actions">
+                        @if (_confirmDelete)
                         {
-                            <span class="label-pill" style="--lc: @label.Color">@label.Name</span>
-                        }
-                    </div>
-                }
-
-                <h3>Activit&#233;</h3>
-                <div class="timeline">
-                    @foreach (var item in GetTimeline())
-                    {
-                        @if (item.IsComment)
-                        {
-                            <div class="timeline-comment">
-                                <div class="timeline-comment-header">
-                                    <strong>@item.Author</strong>
-                                    <small>@item.At.ToString("g")</small>
-                                    @if (_editingCommentId != item.Id)
-                                    {
-                                        <button class="icon-btn pencil-btn" title="Modifier" @onclick="() => StartEditComment(item.Id!.Value, item.Text)">&#9998;</button>
-                                    }
-                                </div>
-                                @if (_editingCommentId == item.Id)
-                                {
-                                    <textarea class="edit-textarea" @bind="_editComment"></textarea>
-                                    <div class="edit-actions">
-                                        <button @onclick="SaveComment">Enregistrer</button>
-                                        <button class="cancel-btn" @onclick="() => _editingCommentId = null">Annuler</button>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="markdown">@((MarkupString)Markdown.ToHtml(item.Text, _mdPipeline))</div>
-                                }
-                            </div>
+                            <span class="confirm-delete-label">Supprimer ce ticket&#160;?</span>
+                            <button class="delete-btn" @onclick="DeleteSelectedTicket">Confirmer</button>
+                            <button class="cancel-btn" @onclick="() => _confirmDelete = false">Annuler</button>
                         }
                         else
                         {
-                            <div class="timeline-event">
-                                <span class="event-dot"></span>
-                                <div class="event-content">
-                                    <span class="event-author">@item.Author</span>
-                                    <span class="event-text">@item.Text</span>
-                                    <small>@item.At.ToString("g")</small>
-                                </div>
-                            </div>
+                            <button class="delete-btn" @onclick="() => _confirmDelete = true">Supprimer ce ticket</button>
                         }
-                    }
+                    </div>
                 </div>
 
-                <div class="add-comment">
-                    <textarea @bind="_newComment" @bind:event="oninput" placeholder="Ajouter un commentaire..."></textarea>
-                    <button @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(_newComment)">Envoyer</button>
-                </div>
-
-                <div class="panel-footer-actions">
-                    @if (_confirmDelete)
+                <div class="ticket-col-right">
+                    <div class="activity-header">
+                        <span class="section-label">Activité</span>
+                        @if (!_addingComment)
+                        {
+                            <button class="add-comment-btn-sm" @onclick="() => _addingComment = true">+ Commentaire</button>
+                        }
+                    </div>
+                    @if (_addingComment)
                     {
-                        <span class="confirm-delete-label">Supprimer ce ticket&#160;?</span>
-                        <button class="delete-btn" @onclick="DeleteSelectedTicket">Confirmer</button>
-                        <button class="cancel-btn" @onclick="() => _confirmDelete = false">Annuler</button>
+                        <div class="inline-comment-form">
+                            <textarea class="edit-textarea" @bind="_newComment" placeholder="Écrire un commentaire..."></textarea>
+                            <div class="edit-actions">
+                                <button @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(_newComment)">Envoyer</button>
+                                <button class="cancel-btn" @onclick="CancelComment">Annuler</button>
+                            </div>
+                        </div>
                     }
-                    else
-                    {
-                        <button class="delete-btn" @onclick="() => _confirmDelete = true">Supprimer ce ticket</button>
-                    }
+                    <div class="activity-scroll">
+                        @foreach (var item in GetTimeline())
+                        {
+                            @if (item.IsComment)
+                            {
+                                <div class="timeline-comment">
+                                    <div class="timeline-comment-header">
+                                        <strong>@item.Author</strong>
+                                        <small>@item.At.ToString("g")</small>
+                                        @if (_editingCommentId != item.Id)
+                                        {
+                                            <button class="icon-btn pencil-btn" title="Modifier" @onclick="() => StartEditComment(item.Id!.Value, item.Text)">&#9998;</button>
+                                        }
+                                    </div>
+                                    @if (_editingCommentId == item.Id)
+                                    {
+                                        <textarea class="edit-textarea" @bind="_editComment"></textarea>
+                                        <div class="edit-actions">
+                                            <button @onclick="SaveComment">Enregistrer</button>
+                                            <button class="cancel-btn" @onclick="() => _editingCommentId = null">Annuler</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="markdown">@((MarkupString)Markdown.ToHtml(item.Text, _mdPipeline))</div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="timeline-event">
+                                    <span class="event-dot"></span>
+                                    <div class="event-content">
+                                        <span class="event-author">@item.Author</span>
+                                        <span class="event-text">@item.Text</span>
+                                        <small>@item.At.ToString("g")</small>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
                 </div>
             </div>
+            </div>
+        </div>
+    }
+
+    @* ── Label management popup ── *@
+    @if (_showLabelManager)
+    {
+        <div class="ticket-modal-overlay" @onmousedown="() => _showLabelManager = false">
+            <div class="label-manager-popup" @onmousedown:stopPropagation>
+                <div class="create-popup-header">
+                    <h2>Gestion des labels</h2>
+                    <button class="close-btn" @onclick="() => _showLabelManager = false">&times;</button>
+                </div>
+                <div class="label-manager-body">
+                    @foreach (var label in _allLabels)
+                    {
+                        var lid = label.Id;
+                        <div class="label-manager-row">
+                            @if (_editingLabelId == lid)
+                            {
+                                <input class="label-manager-name" @bind="_editLabelName" placeholder="Nom..." />
+                                <input type="color" class="label-manager-color" @bind="_editLabelColor" />
+                                <button class="icon-btn save-btn" @onclick="() => SaveLabel(lid)">&#10003;</button>
+                                <button class="icon-btn cancel-icon-btn" @onclick="() => _editingLabelId = null">&#10005;</button>
+                            }
+                            else
+                            {
+                                <span class="label-pill" style="--lc: @label.Color">@label.Name</span>
+                                <button class="icon-btn pencil-btn" @onclick="() => StartEditLabel(label)">&#9998;</button>
+                                <button class="icon-btn label-delete-icon" @onclick="() => DeleteManagedLabel(lid)">&times;</button>
+                            }
+                        </div>
+                    }
+                    <div class="label-manager-add">
+                        <input @bind="_managerNewName" placeholder="Nouveau label..." />
+                        <input type="color" @bind="_managerNewColor" />
+                        <button class="icon-btn save-btn" @onclick="CreateManagedLabel" disabled="@string.IsNullOrWhiteSpace(_managerNewName)">&#10003;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Member management popup ── *@
+    @if (_showMemberManager)
+    {
+        <div class="ticket-modal-overlay" @onmousedown="() => _showMemberManager = false">
+            <div class="label-manager-popup" @onmousedown:stopPropagation>
+                <div class="create-popup-header">
+                    <h2>Gestion des membres</h2>
+                    <button class="close-btn" @onclick="() => _showMemberManager = false">&times;</button>
+                </div>
+                <div class="label-manager-body">
+                    @foreach (var member in _allMembers)
+                    {
+                        var mid = member.Id;
+                        <div class="label-manager-row">
+                            @if (_editingMemberId == mid)
+                            {
+                                <input class="label-manager-name" @bind="_editMemberName" placeholder="Nom..." />
+                                <button class="icon-btn save-btn" @onclick="() => SaveMember(mid)">&#10003;</button>
+                                <button class="icon-btn cancel-icon-btn" @onclick="() => _editingMemberId = null">&#10005;</button>
+                            }
+                            else
+                            {
+                                <span class="assignee-pill">@member.Name</span>
+                                <button class="icon-btn pencil-btn" @onclick="() => StartEditMember(member)">&#9998;</button>
+                                <button class="icon-btn label-delete-icon" @onclick="() => DeleteManagedMember(mid)">&times;</button>
+                            }
+                        </div>
+                    }
+                    <div class="label-manager-add">
+                        <input @bind="_managerNewMemberName" placeholder="Nouveau membre..." />
+                        <button class="icon-btn save-btn" @onclick="CreateManagedMember" disabled="@string.IsNullOrWhiteSpace(_managerNewMemberName)">&#10003;</button>
+                    </div>
+                </div>
             </div>
         </div>
     }
@@ -344,6 +573,10 @@ else
     private Ticket? _draggedTicket;
     private string? _dragOverStatus;
     private int _dragInsertIndex = -1;
+
+    // Column drag & drop
+    private BoardColumn? _draggedColumn;
+    private int _colDropIndex = -1;
     private string _newComment = "";
     private bool _confirmDelete = false;
 
@@ -362,8 +595,12 @@ else
     private bool _showAddColumn = false;
     private string _newColumnName = "";
     private string _newColumnColor = "#5a6a80";
-    private int? _confirmDeleteColumnId = null;
     private string _deleteColumnMoveTo = "";
+
+    // Trash drop zone
+    private bool _trashHover = false;
+    private BoardColumn? _trashConfirmColumn = null;
+    private Ticket? _trashConfirmTicket = null;
 
     // Inline editing state
     private bool _editingTitle = false;
@@ -373,14 +610,48 @@ else
     private int? _editingCommentId = null;
     private string _editComment = "";
 
+    // Priority picker
+    private bool _showPriorityPicker = false;
+
+    // Label autocomplete
+    private string _labelSearch = "";
+    private bool _labelDropdownOpen = false;
+
+    // Label manager popup
+    private bool _showLabelManager = false;
+    private int? _editingLabelId = null;
+    private string _editLabelName = "";
+    private string _editLabelColor = "#6366f1";
+    private string _managerNewName = "";
+    private string _managerNewColor = "#6366f1";
+
+    // Members
+    private List<Member> _allMembers = [];
+    private string _newTicketAssignedTo = "";
+
+    // Assignee autocomplete
+    private string _assigneeSearch = "";
+    private bool _assigneeDropdownOpen = false;
+
+    // Member manager popup
+    private bool _showMemberManager = false;
+    private int? _editingMemberId = null;
+    private string _editMemberName = "";
+    private string _managerNewMemberName = "";
+
+    // Inline comment
+    private bool _addingComment = false;
+
     private MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
     private void RebuildPipeline()
     {
         var index = _tickets.ToDictionary(t => t.Id, t => t.Title);
+        var memberHandles = new HashSet<string>(_allMembers.Select(m => MentionExtension.Slugify(m.Name)), StringComparer.OrdinalIgnoreCase);
         _mdPipeline = new MarkdownPipelineBuilder()
             .UseAdvancedExtensions()
             .Use(new TicketReferenceExtension(Slug, index))
+            .Use(new MentionExtension(memberHandles))
             .Build();
     }
 
@@ -393,7 +664,7 @@ else
             .Select(c => new TimelineItem(c.CreatedAt, c.Author, true, c.Content, c.Id))
             .Concat(_selectedTicket.Activities
                 .Select(a => new TimelineItem(a.CreatedAt, a.Author, false, a.Text, null)))
-            .OrderBy(x => x.At);
+            .OrderByDescending(x => x.At);
     }
 
     protected override async Task OnInitializedAsync()
@@ -404,6 +675,7 @@ else
             _columns = await ColumnService.ListColumnsAsync(Slug);
             _tickets = await TicketService.ListTicketsAsync(Slug);
             _allLabels = await LabelService.ListLabelsAsync(Slug);
+            _allMembers = await MemberService.ListMembersAsync(Slug);
             RebuildPipeline();
         }
         if (TicketId.HasValue)
@@ -448,6 +720,12 @@ else
         _tickets = await TicketService.ListTicketsAsync(Slug);
     }
 
+    private async Task SetPriorityAndClose(TicketPriority p)
+    {
+        _showPriorityPicker = false;
+        await SetPriority(p);
+    }
+
     private void OnDragStart(Ticket ticket) => _draggedTicket = ticket;
 
     private void OnDragEnd()
@@ -455,13 +733,48 @@ else
         _draggedTicket = null;
         _dragOverStatus = null;
         _dragInsertIndex = -1;
+        _trashHover = false;
+    }
+
+    // Column drag handlers
+    private void OnColumnDragStart(BoardColumn col) => _draggedColumn = col;
+
+    private void OnColumnDragEnd()
+    {
+        _draggedColumn = null;
+        _colDropIndex = -1;
+        _trashHover = false;
+    }
+
+    private void OnColumnDragOver(int colIndex, DragEventArgs e)
+    {
+        if (_draggedColumn is null) return;
+        _colDropIndex = e.OffsetX < 115 ? colIndex : colIndex + 1;
+    }
+
+    private async Task OnColumnDrop()
+    {
+        if (_draggedColumn is null) return;
+
+        var targetIndex = _colDropIndex >= 0 ? _colDropIndex : _columns.Count;
+        var currentIndex = _columns.FindIndex(c => c.Id == _draggedColumn.Id);
+        if (currentIndex >= 0 && currentIndex < targetIndex)
+            targetIndex--;
+
+        await ColumnService.ReorderColumnAsync(Slug, _draggedColumn.Id, targetIndex);
+        _columns = await ColumnService.ListColumnsAsync(Slug);
+        _draggedColumn = null;
+        _colDropIndex = -1;
     }
 
     private void OnDragOverCard(string status, int cardIndex, DragEventArgs e)
     {
         if (_draggedTicket is null) return;
         _dragOverStatus = status;
-        _dragInsertIndex = e.OffsetY < 40 ? cardIndex : cardIndex + 1;
+        // Use hysteresis: only flip insertion side when clearly past threshold,
+        // keep current side inside the dead zone to prevent oscillation.
+        var newIndex = e.OffsetY < 30 ? cardIndex : e.OffsetY > 50 ? cardIndex + 1 : _dragInsertIndex;
+        _dragInsertIndex = (newIndex >= 0) ? newIndex : cardIndex;
     }
 
     private void OnDragOverColumn(string status, DragEventArgs e)
@@ -502,6 +815,7 @@ else
         _newTicketDescription = "";
         _newTicketLabelIds = [];
         _newTicketPriority = TicketPriority.NiceToHave;
+        _newTicketAssignedTo = "";
         _showNewLabelForm = false;
         _showCreatePopup = true;
     }
@@ -528,7 +842,7 @@ else
     private async Task CreateTicket()
     {
         if (string.IsNullOrWhiteSpace(_newTicketTitle)) return;
-        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), labelIds: _newTicketLabelIds, priority: _newTicketPriority);
+        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), labelIds: _newTicketLabelIds, priority: _newTicketPriority, assignedTo: string.IsNullOrEmpty(_newTicketAssignedTo) ? null : _newTicketAssignedTo);
         _showCreatePopup = false;
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
@@ -551,6 +865,10 @@ else
         _editingTitle = false;
         _editingDescription = false;
         _editingCommentId = null;
+        _showPriorityPicker = false;
+        _labelSearch = "";
+        _labelDropdownOpen = false;
+        _addingComment = false;
         Navigation.NavigateTo($"/board/{Slug}", replace: true);
     }
 
@@ -570,7 +888,14 @@ else
         if (_selectedTicket is null || string.IsNullOrWhiteSpace(_newComment)) return;
         await TicketService.AddCommentAsync(Slug, _selectedTicket.Id, _newComment.Trim());
         _newComment = "";
+        _addingComment = false;
         _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+    }
+
+    private void CancelComment()
+    {
+        _newComment = "";
+        _addingComment = false;
     }
 
     // Title editing
@@ -639,7 +964,9 @@ else
 
     private void StartDeleteColumn(int columnId)
     {
-        _confirmDeleteColumnId = columnId;
+        var col = _columns.FirstOrDefault(c => c.Id == columnId);
+        if (col is null) return;
+        _trashConfirmColumn = col;
         var first = _columns.FirstOrDefault(c => c.Id != columnId);
         _deleteColumnMoveTo = first?.Name ?? "";
     }
@@ -648,9 +975,250 @@ else
     {
         if (string.IsNullOrEmpty(_deleteColumnMoveTo)) return;
         await ColumnService.DeleteColumnAsync(Slug, columnId, _deleteColumnMoveTo);
-        _confirmDeleteColumnId = null;
+        _trashConfirmColumn = null;
         _columns = await ColumnService.ListColumnsAsync(Slug);
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
+    }
+
+    // Trash zone handlers
+    private void OnTrashDragOver()
+    {
+        _trashHover = true;
+    }
+
+    private void OnTrashDrop()
+    {
+        _trashHover = false;
+        if (_draggedColumn is not null)
+        {
+            _trashConfirmColumn = _draggedColumn;
+            var first = _columns.FirstOrDefault(c => c.Id != _draggedColumn.Id);
+            _deleteColumnMoveTo = first?.Name ?? "";
+            _draggedColumn = null;
+            _colDropIndex = -1;
+        }
+        else if (_draggedTicket is not null)
+        {
+            _trashConfirmTicket = _draggedTicket;
+            _draggedTicket = null;
+            _dragOverStatus = null;
+            _dragInsertIndex = -1;
+        }
+    }
+
+    private void CancelTrash()
+    {
+        _trashConfirmColumn = null;
+        _trashConfirmTicket = null;
+    }
+
+    private async Task ConfirmTrashColumn()
+    {
+        if (_trashConfirmColumn is null) return;
+        await DeleteColumn(_trashConfirmColumn.Id);
+    }
+
+    private async Task ConfirmTrashTicket()
+    {
+        if (_trashConfirmTicket is null) return;
+        await TicketService.DeleteTicketAsync(Slug, _trashConfirmTicket.Id);
+        _trashConfirmTicket = null;
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        RebuildPipeline();
+    }
+
+    // ── Label autocomplete ──
+    private List<Label> GetLabelSuggestions()
+    {
+        if (_selectedTicket is null) return [];
+        var currentIds = _selectedTicket.Labels.Select(l => l.Id).ToHashSet();
+        var query = _labelSearch?.Trim() ?? "";
+        return _allLabels
+            .Where(l => !currentIds.Contains(l.Id))
+            .Where(l => string.IsNullOrEmpty(query) || l.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private async Task AddExistingLabel(Label label)
+    {
+        if (_selectedTicket is null) return;
+        var ids = _selectedTicket.Labels.Select(l => l.Id).ToList();
+        ids.Add(label.Id);
+        await TicketService.SetTicketLabelsAsync(Slug, _selectedTicket.Id, ids);
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _labelSearch = "";
+        _labelDropdownOpen = false;
+    }
+
+    private async Task RemoveLabel(int labelId)
+    {
+        if (_selectedTicket is null) return;
+        var ids = _selectedTicket.Labels.Select(l => l.Id).Where(id => id != labelId).ToList();
+        await TicketService.SetTicketLabelsAsync(Slug, _selectedTicket.Id, ids);
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task CreateAndAddLabel()
+    {
+        if (_selectedTicket is null || string.IsNullOrWhiteSpace(_labelSearch)) return;
+        var label = await LabelService.CreateLabelAsync(Slug, _labelSearch.Trim(), "#6366f1");
+        _allLabels = await LabelService.ListLabelsAsync(Slug);
+        var ids = _selectedTicket.Labels.Select(l => l.Id).ToList();
+        ids.Add(label.Id);
+        await TicketService.SetTicketLabelsAsync(Slug, _selectedTicket.Id, ids);
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _labelSearch = "";
+        _labelDropdownOpen = false;
+    }
+
+    private async Task HandleLabelKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_labelSearch))
+        {
+            var suggestions = GetLabelSuggestions();
+            if (suggestions.Count > 0)
+                await AddExistingLabel(suggestions[0]);
+            else
+                await CreateAndAddLabel();
+        }
+        else if (e.Key == "Escape")
+        {
+            _labelSearch = "";
+            _labelDropdownOpen = false;
+        }
+    }
+
+    private void OnLabelBlur()
+    {
+        // Small delay handled by @onmousedown on dropdown items
+        _labelDropdownOpen = false;
+    }
+
+    // ── Label manager popup ──
+    private void StartEditLabel(Label label)
+    {
+        _editingLabelId = label.Id;
+        _editLabelName = label.Name;
+        _editLabelColor = label.Color;
+    }
+
+    private async Task SaveLabel(int labelId)
+    {
+        if (string.IsNullOrWhiteSpace(_editLabelName)) return;
+        await LabelService.UpdateLabelAsync(Slug, labelId, _editLabelName.Trim(), _editLabelColor);
+        _editingLabelId = null;
+        _allLabels = await LabelService.ListLabelsAsync(Slug);
+        if (_selectedTicket is not null)
+            _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task DeleteManagedLabel(int labelId)
+    {
+        await LabelService.DeleteLabelAsync(Slug, labelId);
+        _allLabels = await LabelService.ListLabelsAsync(Slug);
+        if (_selectedTicket is not null)
+            _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task CreateManagedLabel()
+    {
+        if (string.IsNullOrWhiteSpace(_managerNewName)) return;
+        await LabelService.CreateLabelAsync(Slug, _managerNewName.Trim(), _managerNewColor);
+        _allLabels = await LabelService.ListLabelsAsync(Slug);
+        _managerNewName = "";
+        _managerNewColor = "#6366f1";
+    }
+
+    // ── Assignee autocomplete ──
+    private List<Member> GetAssigneeSuggestions()
+    {
+        var query = _assigneeSearch?.Trim() ?? "";
+        return _allMembers
+            .Where(m => string.IsNullOrEmpty(query) || m.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private async Task SetAssignee(string name)
+    {
+        if (_selectedTicket is null) return;
+        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: name);
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _assigneeSearch = "";
+        _assigneeDropdownOpen = false;
+    }
+
+    private async Task RemoveAssignee()
+    {
+        if (_selectedTicket is null) return;
+        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: "");
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+    }
+
+    private async Task CreateAndAssign()
+    {
+        if (_selectedTicket is null || string.IsNullOrWhiteSpace(_assigneeSearch)) return;
+        var name = _assigneeSearch.Trim();
+        await MemberService.CreateMemberAsync(Slug, name);
+        _allMembers = await MemberService.ListMembersAsync(Slug);
+        await SetAssignee(name);
+    }
+
+    private async Task HandleAssigneeKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_assigneeSearch))
+        {
+            var suggestions = GetAssigneeSuggestions();
+            if (suggestions.Count > 0)
+                await SetAssignee(suggestions[0].Name);
+            else
+                await CreateAndAssign();
+        }
+        else if (e.Key == "Escape")
+        {
+            _assigneeSearch = "";
+            _assigneeDropdownOpen = false;
+        }
+    }
+
+    private void OnAssigneeBlur()
+    {
+        _assigneeDropdownOpen = false;
+    }
+
+    // ── Member manager popup ──
+    private void StartEditMember(Member member)
+    {
+        _editingMemberId = member.Id;
+        _editMemberName = member.Name;
+    }
+
+    private async Task SaveMember(int memberId)
+    {
+        if (string.IsNullOrWhiteSpace(_editMemberName)) return;
+        await MemberService.UpdateMemberAsync(Slug, memberId, _editMemberName.Trim());
+        _editingMemberId = null;
+        _allMembers = await MemberService.ListMembersAsync(Slug);
+    }
+
+    private async Task DeleteManagedMember(int memberId)
+    {
+        await MemberService.DeleteMemberAsync(Slug, memberId);
+        _allMembers = await MemberService.ListMembersAsync(Slug);
+    }
+
+    private async Task CreateManagedMember()
+    {
+        if (string.IsNullOrWhiteSpace(_managerNewMemberName)) return;
+        await MemberService.CreateMemberAsync(Slug, _managerNewMemberName.Trim());
+        _allMembers = await MemberService.ListMembersAsync(Slug);
+        _managerNewMemberName = "";
     }
 }

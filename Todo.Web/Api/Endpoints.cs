@@ -26,6 +26,12 @@ public static class Endpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         }).WithTags("Columns");
 
+        api.MapPatch("/projects/{slug}/columns/reorder", async (string slug, ReorderColumnRequest req, ColumnService cs) =>
+        {
+            await cs.ReorderColumnAsync(slug, req.ColumnId, req.Index);
+            return Results.NoContent();
+        }).WithTags("Columns");
+
         // Projects
         api.MapGet("/projects", async (ProjectService ps) =>
             Results.Ok(await ps.ListProjectsAsync()))
@@ -135,6 +141,12 @@ public static class Endpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         }).WithTags("Labels");
 
+        api.MapPatch("/projects/{slug}/labels/{labelId:int}", async (string slug, int labelId, UpdateLabelRequest req, LabelService ls) =>
+        {
+            var label = await ls.UpdateLabelAsync(slug, labelId, req.Name, req.Color);
+            return label is null ? Results.NotFound() : Results.Ok(label);
+        }).WithTags("Labels");
+
         // Labels (ticket-level)
         api.MapGet("/projects/{slug}/tickets/{id:int}/labels", async (string slug, int id, TicketService ts) =>
         {
@@ -154,5 +166,35 @@ public static class Endpoints
             await ts.ReorderTicketAsync(slug, id, req.Status, req.Index);
             return Results.NoContent();
         }).WithTags("Tickets");
+
+        // Members (project-level)
+        api.MapGet("/projects/{slug}/members", async (string slug, MemberService ms) =>
+            Results.Ok(await ms.ListMembersAsync(slug)))
+            .WithTags("Members");
+
+        api.MapPost("/projects/{slug}/members", async (string slug, CreateMemberRequest req, MemberService ms) =>
+        {
+            var member = await ms.CreateMemberAsync(slug, req.Name);
+            return Results.Created($"/api/projects/{slug}/members/{member.Id}", member);
+        }).WithTags("Members");
+
+        api.MapPatch("/projects/{slug}/members/{memberId:int}", async (string slug, int memberId, UpdateMemberRequest req, MemberService ms) =>
+        {
+            var member = await ms.UpdateMemberAsync(slug, memberId, req.Name);
+            return member is null ? Results.NotFound() : Results.Ok(member);
+        }).WithTags("Members");
+
+        api.MapDelete("/projects/{slug}/members/{memberId:int}", async (string slug, int memberId, MemberService ms) =>
+        {
+            var deleted = await ms.DeleteMemberAsync(slug, memberId);
+            return deleted ? Results.NoContent() : Results.NotFound();
+        }).WithTags("Members");
+
+        // Mentions
+        api.MapGet("/projects/{slug}/mentions/{handle}", async (string slug, string handle, DateTime? since, DateTime? until, TicketService ts) =>
+        {
+            var tickets = await ts.ListMentionedTicketsAsync(slug, handle, since, until);
+            return Results.Ok(tickets);
+        }).WithTags("Mentions");
     }
 }

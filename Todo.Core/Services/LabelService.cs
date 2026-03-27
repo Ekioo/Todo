@@ -58,4 +58,16 @@ public class LabelService
         await db.SaveChangesAsync();
         return true;
     }
+
+    public async Task<Label?> UpdateLabelAsync(string projectSlug, int labelId, string? name = null, string? color = null)
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureLabelTablesAsync(db);
+        var label = await db.Labels.FindAsync(labelId);
+        if (label is null) return null;
+        if (name is not null) label.Name = name;
+        if (color is not null) label.Color = color;
+        await db.SaveChangesAsync();
+        return label;
+    }
 }

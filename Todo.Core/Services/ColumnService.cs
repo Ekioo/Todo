@@ -93,4 +93,27 @@ public class ColumnService
         await db.SaveChangesAsync();
         return true;
     }
+
+    public async Task ReorderColumnAsync(string projectSlug, int columnId, int targetIndex)
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureBoardColumnsTableAsync(db);
+
+        var column = await db.BoardColumns.FindAsync(columnId);
+        if (column is null) return;
+
+        var columns = await db.BoardColumns
+            .Where(c => c.Id != columnId)
+            .OrderBy(c => c.SortOrder)
+            .ToListAsync();
+
+        if (targetIndex < 0) targetIndex = 0;
+        if (targetIndex > columns.Count) targetIndex = columns.Count;
+
+        columns.Insert(targetIndex, column);
+        for (int i = 0; i < columns.Count; i++)
+            columns[i].SortOrder = i;
+
+        await db.SaveChangesAsync();
+    }
 }

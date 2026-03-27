@@ -332,4 +332,34 @@ public class TicketService
         TicketPriority.Critical => "Critical",
         _ => p.ToString()
     };
+
+    /// <summary>
+    /// Returns tickets where @handle appears in description or comments,
+    /// optionally filtered by date range.
+    /// </summary>
+    public async Task<List<Ticket>> ListMentionedTicketsAsync(string projectSlug, string handle, DateTime? since = null, DateTime? until = null)
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureLabelTablesAsync(db);
+        await EnsureSortOrderColumnAsync(db);
+        await EnsureAssignedToColumnAsync(db);
+        await EnsureActivityTableAsync(db);
+
+        var mentionPattern = $"@{handle}";
+
+        var tickets = await db.Tickets
+            .Include(t => t.Labels)
+            .Include(t => t.Comments)
+            .Where(t => t.Description.Contains(mentionPattern)
+                || t.Comments.Any(c => c.Content.Contains(mentionPattern)))
+            .OrderByDescending(t => t.UpdatedAt)
+            .ToListAsync();
+
+        if (since.HasValue)
+            tickets = tickets.Where(t => t.UpdatedAt >= since.Value).ToList();
+        if (until.HasValue)
+            tickets = tickets.Where(t => t.UpdatedAt <= until.Value).ToList();
+
+        return tickets;
+    }
 }

@@ -10,6 +10,7 @@ public class TodoDbContext : DbContext
     public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<BoardColumn> BoardColumns => Set<BoardColumn>();
+    public DbSet<Member> Members => Set<Member>();
 
     private readonly string _dbPath;
 
@@ -51,6 +52,11 @@ public class TodoDbContext : DbContext
         modelBuilder.Entity<BoardColumn>(e =>
         {
             e.HasKey(c => c.Id);
+        });
+
+        modelBuilder.Entity<Member>(e =>
+        {
+            e.HasKey(m => m.Id);
         });
     }
 }

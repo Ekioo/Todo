@@ -14,6 +14,7 @@ builder.Services.AddSingleton(new ProjectService(dataDir));
 builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<LabelService>();
 builder.Services.AddSingleton<ColumnService>();
+builder.Services.AddSingleton<MemberService>();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
