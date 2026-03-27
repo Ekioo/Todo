@@ -4,9 +4,13 @@ using Todo.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
+var dataDir = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    "TodoApp"
+);
 builder.Services.AddSingleton(new ProjectService(dataDir));
 builder.Services.AddSingleton<TicketService>();
+builder.Services.AddSingleton<LabelService>();
 
 builder.Services.AddOpenApi();
 
