@@ -24,6 +24,35 @@ else
     <div class="page-header">
         <a href="/" class="back-link">&larr; Projets</a>
         <h1>@_project.Name</h1>
+        <div class="filter-bar">
+            <div class="filter-input-wrapper">
+                <span class="filter-icon">&#128269;</span>
+                <input class="filter-input"
+                       placeholder="Filtrer…"
+                       @bind="_filterText"
+                       @bind:event="oninput"
+                       @onfocus="() => _filterHintVisible = true"
+                       @onblur="OnFilterBlur" />
+                @if (!string.IsNullOrEmpty(_filterText))
+                {
+                    <button class="filter-clear" @onclick="() => _filterText = string.Empty">&times;</button>
+                }
+                @if (_filterHintVisible)
+                {
+                    <div class="filter-hint-popup">
+                        <div class="filter-hint-title">Syntaxe de filtre</div>
+                        <div class="filter-hint-row"><code>#42</code> ticket par numéro</div>
+                        <div class="filter-hint-row"><code>@@owner</code> assigné à</div>
+                        <div class="filter-hint-row"><code>&gt;2026-03-01</code> modifié après</div>
+                        <div class="filter-hint-row"><code>&lt;2026-03-28</code> modifié avant</div>
+                        <div class="filter-hint-row"><code>priority:critical</code> par priorité</div>
+                        <div class="filter-hint-row"><code>label:bug</code> par label</div>
+                        <div class="filter-hint-row"><code>by:owner</code> créé par</div>
+                        <div class="filter-hint-row">Texte libre = recherche dans le titre</div>
+                    </div>
+                }
+            </div>
+        </div>
         <div class="header-right">
             @if (_showAddColumn)
             {
@@ -644,6 +673,12 @@ else
     // Inline comment
     private bool _addingComment = false;
 
+    // Filter bar
+    private string _filterText = "";
+    private bool _filterHintVisible = false;
+
+    private void OnFilterBlur() => _filterHintVisible = false;
+
     private MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
     private void RebuildPipeline()
@@ -693,8 +728,73 @@ else
             _selectedTicket = null;
     }
 
-    private List<Ticket> GetTickets(string status) =>
-        _tickets.Where(t => t.Status == status).ToList();
+    private List<Ticket> GetTickets(string status)
+    {
+        var tickets = _tickets.Where(t => t.Status == status);
+
+        if (!string.IsNullOrWhiteSpace(_filterText))
+            tickets = ApplyFilter(tickets);
+
+        return tickets.ToList();
+    }
+
+    private IEnumerable<Ticket> ApplyFilter(IEnumerable<Ticket> tickets)
+    {
+        var tokens = _filterText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var token in tokens)
+        {
+            // #N — ticket by number
+            if (token.StartsWith('#') && int.TryParse(token[1..], out var id))
+            {
+                tickets = tickets.Where(t => t.Id == id);
+                continue;
+            }
+            // @slug — assigned to
+            if (token.StartsWith('@'))
+            {
+                var slug = token[1..];
+                tickets = tickets.Where(t => t.AssignedTo != null && t.AssignedTo.Contains(slug, StringComparison.OrdinalIgnoreCase));
+                continue;
+            }
+            // >date — updated after
+            if (token.StartsWith('>') && DateTime.TryParse(token[1..], out var after))
+            {
+                tickets = tickets.Where(t => t.UpdatedAt >= after);
+                continue;
+            }
+            // <date — updated before
+            if (token.StartsWith('<') && DateTime.TryParse(token[1..], out var before))
+            {
+                tickets = tickets.Where(t => t.UpdatedAt <= before);
+                continue;
+            }
+            // priority:xxx
+            if (token.StartsWith("priority:", StringComparison.OrdinalIgnoreCase))
+            {
+                var pVal = token[9..];
+                tickets = tickets.Where(t => GetPriorityLabel(t.Priority).Contains(pVal, StringComparison.OrdinalIgnoreCase)
+                    || GetPriorityClass(t.Priority).Contains(pVal, StringComparison.OrdinalIgnoreCase));
+                continue;
+            }
+            // label:xxx
+            if (token.StartsWith("label:", StringComparison.OrdinalIgnoreCase))
+            {
+                var lVal = token[6..];
+                tickets = tickets.Where(t => t.Labels.Any(l => l.Name.Contains(lVal, StringComparison.OrdinalIgnoreCase)));
+                continue;
+            }
+            // by:xxx — created by
+            if (token.StartsWith("by:", StringComparison.OrdinalIgnoreCase))
+            {
+                var byVal = token[3..];
+                tickets = tickets.Where(t => t.CreatedBy.Contains(byVal, StringComparison.OrdinalIgnoreCase));
+                continue;
+            }
+            // Free text — title search
+            tickets = tickets.Where(t => t.Title.Contains(token, StringComparison.OrdinalIgnoreCase));
+        }
+        return tickets;
+    }
 
     private static string GetPriorityLabel(TicketPriority p) => p switch
     {

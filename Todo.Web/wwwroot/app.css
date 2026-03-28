@@ -51,6 +51,91 @@ a:hover { color: var(--accent-hover); }
 }
 .back-link:hover { color: var(--text); }
 
+/* Filter bar */
+.filter-bar {
+    flex: 1;
+    max-width: 380px;
+    margin-left: auto;
+}
+.filter-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.filter-icon {
+    position: absolute;
+    left: 0.6rem;
+    font-size: 0.85rem;
+    pointer-events: none;
+    opacity: 0.5;
+}
+.filter-input {
+    width: 100%;
+    padding: 0.4rem 1.8rem 0.4rem 2rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.filter-input:focus {
+    border-color: var(--accent);
+}
+.filter-input::placeholder {
+    color: var(--text-muted);
+}
+.filter-clear {
+    position: absolute;
+    right: 0.4rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+}
+.filter-clear:hover { color: var(--text); }
+
+.filter-hint-popup {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.65rem 0.85rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+.filter-hint-title {
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+    font-size: 0.82rem;
+}
+.filter-hint-row {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--text-muted);
+}
+.filter-hint-row code {
+    background: var(--surface3);
+    padding: 0.05rem 0.35rem;
+    border-radius: 4px;
+    color: var(--accent);
+    font-family: monospace;
+    font-size: 0.82em;
+    white-space: nowrap;
+    min-width: 9.5em;
+    display: inline-block;
+}
+
 /* Project list */
 .project-list { display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 1.5rem; }
 .project-card-wrap {
