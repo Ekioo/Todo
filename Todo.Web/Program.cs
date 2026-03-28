@@ -15,6 +15,7 @@ builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<LabelService>();
 builder.Services.AddSingleton<ColumnService>();
 builder.Services.AddSingleton<MemberService>();
+builder.Services.AddScoped<Todo.Web.Services.BoardFilterState>();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));

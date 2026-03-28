@@ -2,12 +2,12 @@
 @page "/board/{Slug}/ticket/{TicketId:int}"
 @using Markdig
 @using Microsoft.AspNetCore.Components
-@using Microsoft.AspNetCore.WebUtilities
 @using Todo.Core.Models
 @using Todo.Core.Services
 @using Todo.Web.Extensions
 @inject ProjectService ProjectService
 @inject TicketService TicketService
+@inject Todo.Web.Services.BoardFilterState FilterState
 @inject LabelService LabelService
 @inject ColumnService ColumnService
 @inject MemberService MemberService
@@ -675,25 +675,14 @@ else
     private bool _addingComment = false;
 
     // Filter bar
-    private string _filterText = "";
+    private string _filterText
+    {
+        get => FilterState.FilterText;
+        set => FilterState.FilterText = value;
+    }
     private bool _filterHintVisible = false;
 
     private void OnFilterBlur() => _filterHintVisible = false;
-
-    private string BuildBoardUrl(string path)
-    {
-        if (!string.IsNullOrWhiteSpace(_filterText))
-            return QueryHelpers.AddQueryString(path, "q", _filterText);
-        return path;
-    }
-
-    private void RestoreFilterFromQuery()
-    {
-        var uri = new Uri(Navigation.Uri);
-        var qs = QueryHelpers.ParseQuery(uri.Query);
-        if (qs.TryGetValue("q", out var q))
-            _filterText = q.ToString();
-    }
 
     private MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
@@ -722,7 +711,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        RestoreFilterFromQuery();
         _project = await ProjectService.GetProjectAsync(Slug);
         if (_project is not null)
         {
@@ -976,7 +964,7 @@ else
         _editingDescription = false;
         _editingCommentId = null;
         _selectedTicket = await TicketService.GetTicketAsync(Slug, ticket.Id);
-        Navigation.NavigateTo(BuildBoardUrl($"/board/{Slug}/ticket/{ticket.Id}"), replace: true);
+        Navigation.NavigateTo($"/board/{Slug}/ticket/{ticket.Id}", replace: true);
     }
 
     private void ClosePanel()
@@ -990,7 +978,7 @@ else
         _labelSearch = "";
         _labelDropdownOpen = false;
         _addingComment = false;
-        Navigation.NavigateTo(BuildBoardUrl($"/board/{Slug}"), replace: true);
+        Navigation.NavigateTo($"/board/{Slug}", replace: true);
     }
 
     private async Task DeleteSelectedTicket()
