@@ -18,23 +18,49 @@ public class MemberService
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS Members (
                 Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                Name TEXT NOT NULL
+                Name TEXT NOT NULL,
+                Slug TEXT NOT NULL DEFAULT ''
             )
         """);
+        // Add Slug column if missing (migration for existing DBs)
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Members ADD COLUMN Slug TEXT NOT NULL DEFAULT ''"); }
+        catch { /* column already exists */ }
     }
 
     public async Task<List<Member>> ListMembersAsync(string projectSlug)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureMemberTableAsync(db);
+        await BackfillSlugsAsync(db);
         return await db.Members.OrderBy(m => m.Name).ToListAsync();
+    }
+
+    public async Task<bool> MemberExistsAsync(string projectSlug, string slug)
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureMemberTableAsync(db);
+        await BackfillSlugsAsync(db);
+        return await db.Members.AnyAsync(m => m.Slug == slug);
+    }
+
+    /// <summary>
+    /// Backfill slugs for members that were created before the Slug column existed.
+    /// </summary>
+    private static async Task BackfillSlugsAsync(TodoDbContext db)
+    {
+        var needsSlug = await db.Members.Where(m => m.Slug == "").ToListAsync();
+        if (needsSlug.Count == 0) return;
+        foreach (var m in needsSlug)
+            m.Slug = Member.ToSlug(m.Name);
+        await db.SaveChangesAsync();
     }
 
     public async Task<Member> CreateMemberAsync(string projectSlug, string name)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureMemberTableAsync(db);
-        var member = new Member { Name = name };
+        await BackfillSlugsAsync(db);
+        var member = new Member { Name = name, Slug = Member.ToSlug(name) };
         db.Members.Add(member);
         await db.SaveChangesAsync();
         return member;
@@ -47,6 +73,7 @@ public class MemberService
         var member = await db.Members.FindAsync(memberId);
         if (member is null) return null;
         member.Name = name;
+        member.Slug = Member.ToSlug(name);
         await db.SaveChangesAsync();
         return member;
     }

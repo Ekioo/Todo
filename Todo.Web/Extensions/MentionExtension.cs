@@ -4,7 +4,7 @@ using Markdig.Parsers;
 using Markdig.Renderers;
 using Markdig.Syntax.Inlines;
 using System.Globalization;
-using System.Text.RegularExpressions;
+using Todo.Core.Models;
 
 namespace Todo.Web.Extensions;
 
@@ -18,12 +18,6 @@ public class MentionExtension(HashSet<string> knownMembers) : IMarkdownExtension
         pipeline.InlineParsers.Insert(0, new MentionParser(knownMembers));
 
     public void Setup(MarkdownPipeline pipeline, IMarkdownRenderer renderer) { }
-
-    /// <summary>
-    /// Converts a display name like "Game Designer" into a slug "game-designer".
-    /// </summary>
-    public static string Slugify(string name) =>
-        Regex.Replace(name.Trim().ToLowerInvariant(), @"[\s_]+", "-");
 }
 
 public partial class MentionParser : InlineParser

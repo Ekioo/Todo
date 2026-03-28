@@ -7,10 +7,12 @@ namespace Todo.Core.Services;
 public class TicketService
 {
     private readonly ProjectService _projectService;
+    private readonly MemberService _memberService;
 
-    public TicketService(ProjectService projectService)
+    public TicketService(ProjectService projectService, MemberService memberService)
     {
         _projectService = projectService;
+        _memberService = memberService;
     }
 
     // Ensures the ActivityEntries table exists (for databases created before this feature)
@@ -96,6 +98,8 @@ public class TicketService
 
     public async Task<Ticket> CreateTicketAsync(string projectSlug, string title, string description = "", string createdBy = "owner", string status = "Backlog", List<int>? labelIds = null, TicketPriority priority = TicketPriority.NiceToHave, string? assignedTo = null)
     {
+        if (!string.IsNullOrEmpty(assignedTo) && !await _memberService.MemberExistsAsync(projectSlug, assignedTo))
+            throw new InvalidOperationException($"Le membre '{assignedTo}' n'existe pas.");
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureActivityTableAsync(db);
         await EnsureLabelTablesAsync(db);
@@ -149,6 +153,8 @@ public class TicketService
 
     public async Task<Ticket?> UpdateTicketAsync(string projectSlug, int ticketId, string? title = null, string? description = null, string author = "owner", TicketPriority? priority = null, string? assignedTo = null)
     {
+        if (!string.IsNullOrEmpty(assignedTo) && !await _memberService.MemberExistsAsync(projectSlug, assignedTo))
+            throw new InvalidOperationException($"Le membre '{assignedTo}' n'existe pas.");
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureActivityTableAsync(db);
         await EnsureAssignedToColumnAsync(db);

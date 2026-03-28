@@ -1278,6 +1278,14 @@ button:disabled { opacity: 0.35; cursor: default; }
     background: var(--surface3);
 }
 
+/* Member slug hint */
+.member-slug-hint {
+    font-size: 0.78em;
+    color: var(--text-muted);
+    margin-left: 0.35rem;
+    font-family: monospace;
+}
+
 /* Priority dots */
 .priority-dot {
     display: inline-block;

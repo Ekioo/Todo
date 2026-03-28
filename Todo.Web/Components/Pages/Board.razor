@@ -102,7 +102,7 @@ else
                             <div class="ticket-card-bottom">
                                 @if (!string.IsNullOrEmpty(ticket.AssignedTo))
                                 {
-                                    <span class="assignee-badge" title="@ticket.AssignedTo">@ticket.AssignedTo</span>
+                                    <span class="assignee-badge" title="@ticket.AssignedTo">@MemberDisplayName(ticket.AssignedTo)</span>
                                 }
                                 <small class="ticket-author">@ticket.CreatedBy</small>
                             </div>
@@ -234,7 +234,7 @@ else
                             <option value="">— Non assigné —</option>
                             @foreach (var member in _allMembers)
                             {
-                                <option value="@member.Name">@member.Name</option>
+                                <option value="@member.Slug">@member.Name (@member.Slug)</option>
                             }
                         </select>
                     </div>
@@ -334,7 +334,7 @@ else
                 @if (!string.IsNullOrEmpty(_selectedTicket.AssignedTo))
                 {
                     <span class="assignee-pill">
-                        @_selectedTicket.AssignedTo
+                        @MemberDisplayName(_selectedTicket.AssignedTo)
                         <button class="label-remove-btn" @onclick="RemoveAssignee">&times;</button>
                     </span>
                 }
@@ -351,8 +351,9 @@ else
                         <div class="label-dropdown">
                             @foreach (var member in GetAssigneeSuggestions())
                             {
-                                <button class="label-dropdown-item" @onmousedown="() => SetAssignee(member.Name)">
+                                <button class="label-dropdown-item" @onmousedown="() => SetAssignee(member.Slug)">
                                     <span class="assignee-pill">@member.Name</span>
+                                    <span class="member-slug-hint">@member.Slug</span>
                                 </button>
                             }
                         </div>
@@ -547,6 +548,7 @@ else
                             else
                             {
                                 <span class="assignee-pill">@member.Name</span>
+                                <span class="member-slug-hint">@member.Slug</span>
                                 <button class="icon-btn pencil-btn" @onclick="() => StartEditMember(member)">&#9998;</button>
                                 <button class="icon-btn label-delete-icon" @onclick="() => DeleteManagedMember(mid)">&times;</button>
                             }
@@ -647,7 +649,7 @@ else
     private void RebuildPipeline()
     {
         var index = _tickets.ToDictionary(t => t.Id, t => t.Title);
-        var memberHandles = new HashSet<string>(_allMembers.Select(m => MentionExtension.Slugify(m.Name)), StringComparer.OrdinalIgnoreCase);
+        var memberHandles = new HashSet<string>(_allMembers.Select(m => m.Slug), StringComparer.OrdinalIgnoreCase);
         _mdPipeline = new MarkdownPipelineBuilder()
             .UseAdvancedExtensions()
             .Use(new TicketReferenceExtension(Slug, index))
@@ -1140,14 +1142,23 @@ else
     {
         var query = _assigneeSearch?.Trim() ?? "";
         return _allMembers
-            .Where(m => string.IsNullOrEmpty(query) || m.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Where(m => string.IsNullOrEmpty(query)
+                || m.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || m.Slug.Contains(query, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private async Task SetAssignee(string name)
+    private string MemberDisplayName(string? slug)
+    {
+        if (string.IsNullOrEmpty(slug)) return "";
+        var member = _allMembers.FirstOrDefault(m => m.Slug == slug);
+        return member?.Name ?? slug;
+    }
+
+    private async Task SetAssignee(string slug)
     {
         if (_selectedTicket is null) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: name);
+        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: slug);
         _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _assigneeSearch = "";
@@ -1166,9 +1177,9 @@ else
     {
         if (_selectedTicket is null || string.IsNullOrWhiteSpace(_assigneeSearch)) return;
         var name = _assigneeSearch.Trim();
-        await MemberService.CreateMemberAsync(Slug, name);
+        var created = await MemberService.CreateMemberAsync(Slug, name);
         _allMembers = await MemberService.ListMembersAsync(Slug);
-        await SetAssignee(name);
+        await SetAssignee(created.Slug);
     }
 
     private async Task HandleAssigneeKeyDown(KeyboardEventArgs e)
@@ -1177,7 +1188,7 @@ else
         {
             var suggestions = GetAssigneeSuggestions();
             if (suggestions.Count > 0)
-                await SetAssignee(suggestions[0].Name);
+                await SetAssignee(suggestions[0].Slug);
             else
                 await CreateAndAssign();
         }

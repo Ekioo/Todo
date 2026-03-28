@@ -62,14 +62,28 @@ public static class Endpoints
 
         api.MapPost("/projects/{slug}/tickets", async (string slug, CreateTicketRequest req, TicketService ts) =>
         {
-            var ticket = await ts.CreateTicketAsync(slug, req.Title, req.Description, req.CreatedBy, req.Status, req.LabelIds, req.Priority, req.AssignedTo);
-            return Results.Created($"/api/projects/{slug}/tickets/{ticket.Id}", ticket);
+            try
+            {
+                var ticket = await ts.CreateTicketAsync(slug, req.Title, req.Description, req.CreatedBy, req.Status, req.LabelIds, req.Priority, req.AssignedTo);
+                return Results.Created($"/api/projects/{slug}/tickets/{ticket.Id}", ticket);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         }).WithTags("Tickets");
 
         api.MapPatch("/projects/{slug}/tickets/{id:int}", async (string slug, int id, UpdateTicketRequest req, TicketService ts) =>
         {
-            var ticket = await ts.UpdateTicketAsync(slug, id, req.Title, req.Description, req.Author, req.Priority, req.AssignedTo);
-            return ticket is null ? Results.NotFound() : Results.Ok(ticket);
+            try
+            {
+                var ticket = await ts.UpdateTicketAsync(slug, id, req.Title, req.Description, req.Author, req.Priority, req.AssignedTo);
+                return ticket is null ? Results.NotFound() : Results.Ok(ticket);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         }).WithTags("Tickets");
 
         api.MapGet("/projects/{slug}/tickets/{id:int}", async (string slug, int id, TicketService ts) =>
