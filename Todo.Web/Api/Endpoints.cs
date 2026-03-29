@@ -94,7 +94,7 @@ public static class Endpoints
 
         api.MapPatch("/projects/{slug}/tickets/{id:int}/status", async (string slug, int id, MoveTicketRequest req, TicketService ts) =>
         {
-            var ticket = await ts.MoveTicketAsync(slug, id, req.Status);
+            var ticket = await ts.MoveTicketAsync(slug, id, req.Status, req.Author);
             return ticket is null ? Results.NotFound() : Results.Ok(ticket);
         }).WithTags("Tickets");
 
