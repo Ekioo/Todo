@@ -397,6 +397,11 @@ else
                         </div>
                     }
                 </div>
+                <div class="ticket-meta">
+                    <span>@_selectedTicket.Status</span>
+                    <span>@_selectedTicket.CreatedBy</span>
+                    <span>@_selectedTicket.CreatedAt.ToString("d")</span>
+                </div>
             </div>
 
             @* ── Two-column body ── *@
@@ -404,37 +409,17 @@ else
                 <div class="ticket-col-left">
                     <div class="section-header">
                         <span class="section-label">Description</span>
-                        @if (!_editingDescription)
-                        {
-                            <button class="icon-btn pencil-btn" title="Modifier la description" @onclick="StartEditDescription">&#9998;</button>
-                        }
+                        <button class="icon-btn pencil-btn" title="Modifier la description" @onclick="StartEditDescription">&#9998;</button>
                     </div>
-                    @if (_editingDescription)
-                    {
-                        <textarea class="edit-textarea" @bind="_editDescription"></textarea>
-                        <div class="edit-actions">
-                            <button @onclick="SaveDescription">Enregistrer</button>
-                            <button class="cancel-btn" @onclick="() => _editingDescription = false">Annuler</button>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="ticket-desc markdown">
-                            @if (_selectedTicket.Description is { Length: > 0 })
-                            {
-                                @((MarkupString)Markdown.ToHtml(_selectedTicket.Description, _mdPipeline))
-                            }
-                            else
-                            {
-                                <p class="empty-hint">Aucune description &mdash; cliquez sur &#9998; pour en ajouter une.</p>
-                            }
-                        </div>
-                    }
-
-                    <div class="ticket-meta">
-                        <span>Statut&#160;: <strong>@_selectedTicket.Status</strong></span>
-                        <span>Par&#160;: @_selectedTicket.CreatedBy</span>
-                        <span>Créé&#160;: @_selectedTicket.CreatedAt.ToString("g")</span>
+                    <div class="ticket-desc markdown">
+                        @if (_selectedTicket.Description is { Length: > 0 })
+                        {
+                            @((MarkupString)Markdown.ToHtml(_selectedTicket.Description, _mdPipeline))
+                        }
+                        else
+                        {
+                            <p class="empty-hint">Aucune description &mdash; cliquez sur &#9998; pour en ajouter une.</p>
+                        }
                     </div>
 
                     <div class="panel-footer-actions">
@@ -456,19 +441,9 @@ else
                         <span class="section-label">Activité</span>
                         @if (!_addingComment)
                         {
-                            <button class="add-comment-btn-sm" @onclick="() => _addingComment = true">+ Commentaire</button>
+                            <button class="add-comment-btn-sm" @onclick="StartNewComment">+ Commentaire</button>
                         }
                     </div>
-                    @if (_addingComment)
-                    {
-                        <div class="inline-comment-form">
-                            <textarea class="edit-textarea" @bind="_newComment" placeholder="Écrire un commentaire..."></textarea>
-                            <div class="edit-actions">
-                                <button @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(_newComment)">Envoyer</button>
-                                <button class="cancel-btn" @onclick="CancelComment">Annuler</button>
-                            </div>
-                        </div>
-                    }
                     <div class="activity-scroll">
                         @foreach (var item in GetTimeline())
                         {
@@ -483,18 +458,7 @@ else
                                             <button class="icon-btn pencil-btn" title="Modifier" @onclick="() => StartEditComment(item.Id!.Value, item.Text)">&#9998;</button>
                                         }
                                     </div>
-                                    @if (_editingCommentId == item.Id)
-                                    {
-                                        <textarea class="edit-textarea" @bind="_editComment"></textarea>
-                                        <div class="edit-actions">
-                                            <button @onclick="SaveComment">Enregistrer</button>
-                                            <button class="cancel-btn" @onclick="() => _editingCommentId = null">Annuler</button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="markdown">@((MarkupString)Markdown.ToHtml(item.Text, _mdPipeline))</div>
-                                    }
+                                    <div class="markdown">@((MarkupString)Markdown.ToHtml(item.Text, _mdPipeline))</div>
                                 </div>
                             }
                             else
@@ -594,6 +558,23 @@ else
     }
 }
 
+@if (!string.IsNullOrEmpty(_fullscreenTarget))
+{
+    <div class="fullscreen-editor-overlay" @onclick="CancelFullscreen">
+        <div class="fullscreen-editor" @onclick:stopPropagation>
+            <div class="fullscreen-editor-header">
+                <span>@(_fullscreenTarget == "description" ? "Description" : "Commentaire")</span>
+                <button class="icon-btn cancel-icon-btn" @onclick="CancelFullscreen">&#10005;</button>
+            </div>
+            <textarea @bind="_fullscreenText" @bind:event="oninput"></textarea>
+            <div class="fullscreen-editor-footer">
+                <button @onclick="SaveFullscreen">Enregistrer</button>
+                <button class="cancel-btn" @onclick="CancelFullscreen">Annuler</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public string Slug { get; set; } = "";
     [Parameter] public int? TicketId { get; set; }
@@ -637,8 +618,6 @@ else
     // Inline editing state
     private bool _editingTitle = false;
     private string _editTitle = "";
-    private bool _editingDescription = false;
-    private string _editDescription = "";
     private int? _editingCommentId = null;
     private string _editComment = "";
 
@@ -674,6 +653,10 @@ else
     // Inline comment
     private bool _addingComment = false;
 
+    // Fullscreen editor
+    private string _fullscreenTarget = ""; // "description", "newComment", "editComment"
+    private string _fullscreenText = "";
+
     // Filter bar
     private string _filterText
     {
@@ -683,6 +666,59 @@ else
     private bool _filterHintVisible = false;
 
     private void OnFilterBlur() => _filterHintVisible = false;
+
+    private void OpenFullscreen(string target)
+    {
+        _fullscreenTarget = target;
+        _fullscreenText = target switch
+        {
+            "description" => _selectedTicket?.Description ?? "",
+            "newComment" => "",
+            "editComment" => _editComment,
+            _ => ""
+        };
+    }
+
+    private void CancelFullscreen()
+    {
+        _fullscreenTarget = "";
+        _fullscreenText = "";
+    }
+
+    private async Task SaveFullscreen()
+    {
+        var target = _fullscreenTarget;
+        var text = _fullscreenText;
+        _fullscreenTarget = "";
+        _fullscreenText = "";
+
+        switch (target)
+        {
+            case "description":
+                if (_selectedTicket is not null)
+                {
+                    await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, description: text);
+                    _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+                }
+                break;
+            case "newComment":
+                if (_selectedTicket is not null && !string.IsNullOrWhiteSpace(text))
+                {
+                    await TicketService.AddCommentAsync(Slug, _selectedTicket.Id, text.Trim());
+                    _addingComment = false;
+                    _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+                }
+                break;
+            case "editComment":
+                if (_selectedTicket is not null && _editingCommentId is not null)
+                {
+                    await TicketService.UpdateCommentAsync(Slug, _selectedTicket.Id, _editingCommentId.Value, text.Trim());
+                    _editingCommentId = null;
+                    _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+                }
+                break;
+        }
+    }
 
     private MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
@@ -961,8 +997,8 @@ else
     {
         _confirmDelete = false;
         _editingTitle = false;
-        _editingDescription = false;
         _editingCommentId = null;
+        _fullscreenTarget = "";
         _selectedTicket = await TicketService.GetTicketAsync(Slug, ticket.Id);
         Navigation.NavigateTo($"/board/{Slug}/ticket/{ticket.Id}", replace: true);
     }
@@ -972,8 +1008,8 @@ else
         _selectedTicket = null;
         _confirmDelete = false;
         _editingTitle = false;
-        _editingDescription = false;
         _editingCommentId = null;
+        _fullscreenTarget = "";
         _showPriorityPicker = false;
         _labelSearch = "";
         _labelDropdownOpen = false;
@@ -1007,6 +1043,11 @@ else
         _addingComment = false;
     }
 
+    private void StartNewComment()
+    {
+        OpenFullscreen("newComment");
+    }
+
     // Title editing
     private void StartEditTitle()
     {
@@ -1033,16 +1074,7 @@ else
     // Description editing
     private void StartEditDescription()
     {
-        _editDescription = _selectedTicket!.Description;
-        _editingDescription = true;
-    }
-
-    private async Task SaveDescription()
-    {
-        if (_selectedTicket is null) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, description: _editDescription);
-        _editingDescription = false;
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        OpenFullscreen("description");
     }
 
     // Comment editing
@@ -1050,6 +1082,7 @@ else
     {
         _editComment = currentContent;
         _editingCommentId = commentId;
+        OpenFullscreen("editComment");
     }
 
     private async Task SaveComment()
