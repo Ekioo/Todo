@@ -347,14 +347,6 @@ else
                             }
                         </div>
                     }
-                    @if (_labelDropdownOpen && !string.IsNullOrWhiteSpace(_labelSearch) && !_allLabels.Any(l => l.Name.Equals(_labelSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
-                    {
-                        <div class="label-dropdown @(GetLabelSuggestions().Any() ? "" : "label-dropdown-only")">
-                            <button class="label-dropdown-item label-create-item" @onmousedown="CreateAndAddLabel">
-                                Créer «&#160;@_labelSearch.Trim()&#160;»
-                            </button>
-                        </div>
-                    }
                 </div>
             </div>
 
@@ -386,14 +378,6 @@ else
                                     <span class="member-slug-hint">@member.Slug</span>
                                 </button>
                             }
-                        </div>
-                    }
-                    @if (_assigneeDropdownOpen && !string.IsNullOrWhiteSpace(_assigneeSearch) && !_allMembers.Any(m => m.Name.Equals(_assigneeSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
-                    {
-                        <div class="label-dropdown @(GetAssigneeSuggestions().Any() ? "" : "label-dropdown-only")">
-                            <button class="label-dropdown-item label-create-item" @onmousedown="CreateAndAssign">
-                                Créer «&#160;@_assigneeSearch.Trim()&#160;»
-                            </button>
                         </div>
                     }
                 </div>
