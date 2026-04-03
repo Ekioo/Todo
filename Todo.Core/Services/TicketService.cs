@@ -136,6 +136,10 @@ public class TicketService
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureActivityTableAsync(db);
+        await ColumnService.EnsureBoardColumnsTableAsync(db);
+        var columnExists = await db.BoardColumns.AnyAsync(c => c.Name == newStatus);
+        if (!columnExists)
+            throw new InvalidOperationException($"La colonne '{newStatus}' n'existe pas.");
         var ticket = await db.Tickets.FindAsync(ticketId);
         if (ticket is null) return null;
         var oldStatus = ticket.Status;
