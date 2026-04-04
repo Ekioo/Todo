@@ -927,6 +927,18 @@ button:disabled { opacity: 0.35; cursor: default; }
     font-size: 1rem;
     letter-spacing: 0;
 }
+.thread-mode-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 99px;
+    padding: 0.15rem 0.55rem;
+    opacity: 0.85;
+}
 .settings-popup {
     background: var(--surface);
     border: 1px solid var(--border-strong);

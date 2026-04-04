@@ -317,6 +317,10 @@ else
                     }
                 </div>
                 <div class="header-actions">
+                    @if (_optThreadMode)
+                    {
+                        <span class="thread-mode-badge">Mode fil</span>
+                    }
                     <button class="close-btn" @onclick="ClosePanel">&times;</button>
                 </div>
             </div>
@@ -626,7 +630,7 @@ else
                 </div>
                 <div class="settings-body">
                     <label class="settings-option">
-                        <input type="checkbox" @bind="_optThreadMode" />
+                        <input type="checkbox" checked="@_optThreadMode" @onchange="e => { _optThreadMode = (bool)(e.Value ?? false); StateHasChanged(); }" />
                         <span>
                             <strong>Affichage en mode fil</strong>
                             <small>Description et activité sur une seule colonne, du plus récent au plus ancien.</small>

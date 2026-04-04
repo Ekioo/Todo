@@ -40,7 +40,7 @@ app.UseHttpsRedirection();
 // Serve uploaded images
 var uploadsDir = Path.Combine(dataDir, "uploads");
 Directory.CreateDirectory(uploadsDir);
-app.UseStaticFiles(new Microsoft.AspNetCore.StaticFiles.StaticFileOptions
+app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsDir),
     RequestPath = "/uploads"
