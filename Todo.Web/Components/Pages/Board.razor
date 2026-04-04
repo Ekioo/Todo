@@ -397,7 +397,11 @@ else
             </div>
 
             @* ── Two-column body ── *@
-            @if (_optThreadMode)
+            @if (!_settingsLoaded)
+            {
+                <div style="flex:1"></div>
+            }
+            else if (_optThreadMode)
             {
                 <div class="ticket-panel-thread">
                     <div class="section-header">
@@ -630,7 +634,7 @@ else
                 </div>
                 <div class="settings-body">
                     <label class="settings-option">
-                        <input type="checkbox" checked="@_optThreadMode" @onchange="e => { _optThreadMode = (bool)(e.Value ?? false); StateHasChanged(); }" />
+                        <input type="checkbox" checked="@_optThreadMode" @onchange="OnThreadModeChanged" />
                         <span>
                             <strong>Affichage en mode fil</strong>
                             <small>Description et activité sur une seule colonne, du plus récent au plus ancien.</small>
@@ -737,6 +741,7 @@ else
     // Settings popup
     private bool _showSettings = false;
     private bool _optThreadMode = false;
+    private bool _settingsLoaded = false;
 
     // Inline comment
     private bool _addingComment = false;
@@ -884,11 +889,24 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            var saved = await JS.InvokeAsync<string?>("getLocalStorage", "opt_thread_mode");
+            _optThreadMode = saved == "true";
+            _settingsLoaded = true;
+            StateHasChanged();
+        }
         if (!string.IsNullOrEmpty(_fullscreenTarget) && !_pasteListenerAttached)
         {
             _pasteListenerAttached = true;
             await JS.InvokeVoidAsync("attachImagePaste", _editorTextarea, "/api/images");
         }
+    }
+
+    private async Task OnThreadModeChanged(ChangeEventArgs e)
+    {
+        _optThreadMode = Convert.ToBoolean(e.Value);
+        await JS.InvokeVoidAsync("setLocalStorage", "opt_thread_mode", _optThreadMode ? "true" : "false");
     }
 
     private List<TicketSummary> GetTickets(string status)

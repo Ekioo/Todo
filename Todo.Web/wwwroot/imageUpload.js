@@ -1,3 +1,6 @@
+window.getLocalStorage = (key) => localStorage.getItem(key);
+window.setLocalStorage = (key, value) => localStorage.setItem(key, value);
+
 window.attachImagePaste = function (textarea, uploadUrl) {
     if (!textarea || textarea._imagePasteAttached) return;
     textarea._imagePasteAttached = true;

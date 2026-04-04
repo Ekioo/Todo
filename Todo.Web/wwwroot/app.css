@@ -1,16 +1,16 @@
 :root {
-    --bg: #0c0c10;
-    --surface: #13131a;
-    --surface2: #1a1a24;
-    --surface3: #22222f;
+    --bg: #05050a;
+    --surface: #191928;
+    --surface2: #232338;
+    --surface3: #2e2e48;
     --accent: #2dd4bf;
     --accent-dim: rgba(45, 212, 191, 0.12);
     --accent-hover: #5eead4;
-    --text: #e0e0eb;
-    --text-muted: #6b6b82;
-    --text-dim: #3d3d52;
-    --border: #202030;
-    --border-strong: #2c2c42;
+    --text: #e4e4f0;
+    --text-muted: #7a7a96;
+    --text-dim: #46466a;
+    --border: #2e2e48;
+    --border-strong: #464672;
 
     --s-blocked:    #f06b6b;
 }
@@ -235,7 +235,8 @@ a:hover { color: var(--accent-hover); }
     border-radius: 10px;
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.35);
     transition: border-color 0.15s;
     height: 100%;
     position: relative;
@@ -430,7 +431,7 @@ a:hover { color: var(--accent-hover); }
 /* Ticket card */
 .ticket-card {
     background: var(--surface2);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     padding: 0.65rem 0.8rem;
     cursor: grab;
@@ -438,10 +439,11 @@ a:hover { color: var(--accent-hover); }
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 .ticket-card:hover {
-    border-color: var(--border-strong);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+    border-color: var(--accent);
+    box-shadow: 0 3px 14px rgba(0,0,0,0.4);
 }
 .ticket-card:active { cursor: grabbing; transform: scale(0.985); }
 .ticket-card.dragging {
