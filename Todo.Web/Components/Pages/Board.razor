@@ -73,7 +73,6 @@ else
             }
             <button class="header-action-btn" @onclick="() => _showLabelManager = true" title="Gérer les labels">&#127991; Labels</button>
             <button class="header-action-btn" @onclick="() => _showMemberManager = true" title="Gérer les membres">&#128101; Membres</button>
-            <button class="header-action-btn header-settings-btn" @onclick="() => _showSettings = true" title="Options">&#9881;</button>
         </div>
     </div>
 
@@ -317,10 +316,6 @@ else
                     }
                 </div>
                 <div class="header-actions">
-                    @if (_optThreadMode)
-                    {
-                        <span class="thread-mode-badge">Mode fil</span>
-                    }
                     <button class="close-btn" @onclick="ClosePanel">&times;</button>
                 </div>
             </div>
@@ -396,13 +391,7 @@ else
                 </div>
             </div>
 
-            @* ── Two-column body ── *@
-            @if (!_settingsLoaded)
-            {
-                <div style="flex:1"></div>
-            }
-            else if (_optThreadMode)
-            {
+            @* ── Ticket body (thread layout) ── *@
                 <div class="ticket-panel-thread">
                     <div class="section-header">
                         <span class="section-label">Description</span>
@@ -467,81 +456,6 @@ else
                         }
                     </div>
                 </div>
-            }
-            else
-            {
-            <div class="ticket-panel-columns">
-                <div class="ticket-col-left">
-                    <div class="section-header">
-                        <span class="section-label">Description</span>
-                        <button class="icon-btn pencil-btn" title="Modifier la description" @onclick="StartEditDescription">&#9998;</button>
-                    </div>
-                    <div class="ticket-desc markdown">
-                        @if (_selectedTicket.Description is { Length: > 0 })
-                        {
-                            @((MarkupString)Markdown.ToHtml(_selectedTicket.Description, _mdPipeline))
-                        }
-                        else
-                        {
-                            <p class="empty-hint">Aucune description &mdash; cliquez sur &#9998; pour en ajouter une.</p>
-                        }
-                    </div>
-
-                    <div class="panel-footer-actions">
-                        @if (_confirmDelete)
-                        {
-                            <span class="confirm-delete-label">Supprimer ce ticket&#160;?</span>
-                            <button class="delete-btn" @onclick="DeleteSelectedTicket">Confirmer</button>
-                            <button class="cancel-btn" @onclick="() => _confirmDelete = false">Annuler</button>
-                        }
-                        else
-                        {
-                            <button class="delete-btn" @onclick="() => _confirmDelete = true">Supprimer ce ticket</button>
-                        }
-                    </div>
-                </div>
-
-                <div class="ticket-col-right">
-                    <div class="activity-header">
-                        <span class="section-label">Activité</span>
-                        @if (!_addingComment)
-                        {
-                            <button class="add-comment-btn-sm" @onclick="StartNewComment">+ Commentaire</button>
-                        }
-                    </div>
-                    <div class="activity-scroll">
-                        @foreach (var item in GetTimeline())
-                        {
-                            @if (item.IsComment)
-                            {
-                                <div class="timeline-comment">
-                                    <div class="timeline-comment-header">
-                                        <strong>@item.Author</strong>
-                                        <small>@item.At.ToString("g")</small>
-                                        @if (_editingCommentId != item.Id)
-                                        {
-                                            <button class="icon-btn pencil-btn" title="Modifier" @onclick="() => StartEditComment(item.Id!.Value, item.Text)">&#9998;</button>
-                                        }
-                                    </div>
-                                    <div class="markdown">@((MarkupString)Markdown.ToHtml(item.Text, _mdPipeline))</div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="timeline-event">
-                                    <span class="event-dot"></span>
-                                    <div class="event-content">
-                                        <span class="event-author">@item.Author</span>
-                                        <span class="event-text">@item.Text</span>
-                                        <small>@item.At.ToString("g")</small>
-                                    </div>
-                                </div>
-                            }
-                        }
-                    </div>
-                </div>
-            </div>
-            } @* end @else (normal mode) *@
             </div>
         </div>
     }
@@ -618,28 +532,6 @@ else
                         <input @bind="_managerNewMemberName" placeholder="Nouveau membre..." />
                         <button class="icon-btn save-btn" @onclick="CreateManagedMember" disabled="@string.IsNullOrWhiteSpace(_managerNewMemberName)">&#10003;</button>
                     </div>
-                </div>
-            </div>
-        </div>
-    }
-
-    @* ── Settings popup ── *@
-    @if (_showSettings)
-    {
-        <div class="ticket-modal-overlay" @onmousedown="() => _showSettings = false">
-            <div class="settings-popup" @onmousedown:stopPropagation>
-                <div class="create-popup-header">
-                    <h2>Options</h2>
-                    <button class="close-btn" @onclick="() => _showSettings = false">&times;</button>
-                </div>
-                <div class="settings-body">
-                    <label class="settings-option">
-                        <input type="checkbox" checked="@_optThreadMode" @onchange="OnThreadModeChanged" />
-                        <span>
-                            <strong>Affichage en mode fil</strong>
-                            <small>Description et activité sur une seule colonne, du plus récent au plus ancien.</small>
-                        </span>
-                    </label>
                 </div>
             </div>
         </div>
@@ -739,9 +631,7 @@ else
     private string _managerNewMemberName = "";
 
     // Settings popup
-    private bool _showSettings = false;
-    private bool _optThreadMode = false;
-    private bool _settingsLoaded = false;
+
 
     // Inline comment
     private bool _addingComment = false;
@@ -889,13 +779,6 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            var saved = await JS.InvokeAsync<string?>("getLocalStorage", "opt_thread_mode");
-            _optThreadMode = saved == "true";
-            _settingsLoaded = true;
-            StateHasChanged();
-        }
         if (!string.IsNullOrEmpty(_fullscreenTarget) && !_pasteListenerAttached)
         {
             _pasteListenerAttached = true;
@@ -903,11 +786,6 @@ else
         }
     }
 
-    private async Task OnThreadModeChanged(ChangeEventArgs e)
-    {
-        _optThreadMode = Convert.ToBoolean(e.Value);
-        await JS.InvokeVoidAsync("setLocalStorage", "opt_thread_mode", _optThreadMode ? "true" : "false");
-    }
 
     private List<TicketSummary> GetTickets(string status)
     {
