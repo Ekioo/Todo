@@ -13,6 +13,7 @@
 @inject ColumnService ColumnService
 @inject MemberService MemberService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 @implements IDisposable
 
@@ -552,7 +553,7 @@ else
                 <span>@(_fullscreenTarget == "description" ? "Description" : "Commentaire")</span>
                 <button class="icon-btn cancel-icon-btn" @onclick="CancelFullscreen">&#10005;</button>
             </div>
-            <textarea @bind="_fullscreenText" @bind:event="oninput"></textarea>
+            <textarea @ref="_editorTextarea" @bind="_fullscreenText" @bind:event="oninput"></textarea>
             <div class="fullscreen-editor-footer">
                 <button @onclick="SaveFullscreen">Enregistrer</button>
                 <button class="cancel-btn" @onclick="CancelFullscreen">Annuler</button>
@@ -642,6 +643,8 @@ else
     // Fullscreen editor
     private string _fullscreenTarget = ""; // "description", "newComment", "editComment"
     private string _fullscreenText = "";
+    private ElementReference _editorTextarea;
+    private bool _pasteListenerAttached = false;
 
     // Filter bar
     private string _filterText
@@ -669,6 +672,7 @@ else
     {
         _fullscreenTarget = "";
         _fullscreenText = "";
+        _pasteListenerAttached = false;
     }
 
     private async Task SaveFullscreen()
@@ -775,6 +779,15 @@ else
             _selectedTicket = await TicketService.GetTicketAsync(Slug, TicketId.Value);
         else if (!TicketId.HasValue && _selectedTicket is not null)
             _selectedTicket = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!string.IsNullOrEmpty(_fullscreenTarget) && !_pasteListenerAttached)
+        {
+            _pasteListenerAttached = true;
+            await JS.InvokeVoidAsync("attachImagePaste", _editorTextarea, "/api/images");
+        }
     }
 
     private List<TicketSummary> GetTickets(string status)

@@ -11,6 +11,8 @@ public partial class ProjectService
     private readonly string _dataDir;
     private readonly string _registryPath;
 
+    public string DataDir => _dataDir;
+
     public ProjectService(string dataDir)
     {
         _dataDir = dataDir;

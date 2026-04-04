@@ -37,6 +37,15 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
+// Serve uploaded images
+var uploadsDir = Path.Combine(dataDir, "uploads");
+Directory.CreateDirectory(uploadsDir);
+app.UseStaticFiles(new Microsoft.AspNetCore.StaticFiles.StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsDir),
+    RequestPath = "/uploads"
+});
+
 app.UseAntiforgery();
 
 app.MapOpenApi();
