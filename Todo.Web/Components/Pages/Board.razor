@@ -1,5 +1,7 @@
 @page "/board/{Slug}"
 @page "/board/{Slug}/ticket/{TicketId:int}"
+@page "/board/{Slug}/sub/{ParentId:int}"
+@page "/board/{Slug}/sub/{ParentId:int}/ticket/{TicketId:int}"
 @using Markdig
 @using Microsoft.AspNetCore.Components
 @using Todo.Core.Models
@@ -632,6 +634,7 @@ else
 @code {
     [Parameter] public string Slug { get; set; } = "";
     [Parameter] public int? TicketId { get; set; }
+    [Parameter] public int? ParentId { get; set; }
 
     private Project? _project;
     private List<TicketSummary> _tickets = [];
@@ -824,6 +827,11 @@ else
             _allMembers = await MemberService.ListMembersAsync(Slug);
             RebuildPipeline();
         }
+        if (ParentId.HasValue)
+        {
+            _subKanbanParentId = ParentId.Value;
+            _subKanbanParent = _tickets.FirstOrDefault(t => t.Id == ParentId.Value);
+        }
         if (TicketId.HasValue)
             _selectedTicket = await TicketService.GetTicketAsync(Slug, TicketId.Value);
     }
@@ -852,6 +860,19 @@ else
     protected override async Task OnParametersSetAsync()
     {
         if (_project is null) return; // handled by OnInitializedAsync
+
+        // Sync sub-kanban state with URL
+        if (ParentId.HasValue && _subKanbanParentId != ParentId.Value)
+        {
+            _subKanbanParentId = ParentId.Value;
+            _subKanbanParent = _tickets.FirstOrDefault(t => t.Id == ParentId.Value);
+        }
+        else if (!ParentId.HasValue && _subKanbanParentId is not null)
+        {
+            _subKanbanParentId = null;
+            _subKanbanParent = null;
+        }
+
         if (TicketId.HasValue && _selectedTicket?.Id != TicketId)
             _selectedTicket = await TicketService.GetTicketAsync(Slug, TicketId.Value);
         else if (!TicketId.HasValue && _selectedTicket is not null)
@@ -1114,12 +1135,14 @@ else
         _subKanbanParentId = parent.Id;
         _subKanbanParent = parent;
         _selectedTicket = null;
+        Navigation.NavigateTo($"/board/{Slug}/sub/{parent.Id}", replace: true);
     }
 
     private void ExitSubKanban()
     {
         _subKanbanParentId = null;
         _subKanbanParent = null;
+        Navigation.NavigateTo($"/board/{Slug}", replace: true);
     }
 
     private string GetColumnColor(string status) =>
@@ -1189,7 +1212,10 @@ else
         _editingCommentId = null;
         _fullscreenTarget = "";
         _selectedTicket = await TicketService.GetTicketAsync(Slug, ticket.Id);
-        Navigation.NavigateTo($"/board/{Slug}/ticket/{ticket.Id}", replace: true);
+        if (_subKanbanParentId is not null)
+            Navigation.NavigateTo($"/board/{Slug}/sub/{_subKanbanParentId}/ticket/{ticket.Id}", replace: true);
+        else
+            Navigation.NavigateTo($"/board/{Slug}/ticket/{ticket.Id}", replace: true);
     }
 
     private void ClosePanel()
@@ -1203,7 +1229,10 @@ else
         _labelSearch = "";
         _labelDropdownOpen = false;
         _addingComment = false;
-        Navigation.NavigateTo($"/board/{Slug}", replace: true);
+        if (_subKanbanParentId is not null)
+            Navigation.NavigateTo($"/board/{Slug}/sub/{_subKanbanParentId}", replace: true);
+        else
+            Navigation.NavigateTo($"/board/{Slug}", replace: true);
     }
 
     private async Task DeleteSelectedTicket()
