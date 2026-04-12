@@ -1,125 +1,893 @@
-# Todo Board API
+﻿# Todo.Web | v1
 
-Base URL: `http://localhost:5230`
+Base URL: `http://localhost:5230/`
 
-## Projets
+## Columns
 
-### Lister les projets
+### GET /api/projects/{slug}/columns
+
+```
+GET /api/projects/{slug}/columns
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### POST /api/projects/{slug}/columns
+
+```
+POST /api/projects/{slug}/columns
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "name": "...",
+  "color": "..."  // optional
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/columns/{columnId}
+
+```
+DELETE /api/projects/{slug}/columns/{columnId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `columnId` | path | integer (int32) | Yes |
+| `moveTicketsTo` | query | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/columns/reorder
+
+```
+PATCH /api/projects/{slug}/columns/reorder
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "columnId": 0,
+  "index": 0
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Projects
+
+### GET /api/projects
+
 ```
 GET /api/projects
 ```
-Response: `Project[]`
 
-### Créer un projet
+**Responses:**
+
+- `200` OK
+
+---
+
+### POST /api/projects
+
 ```
 POST /api/projects
-Content-Type: application/json
-
-{"name": "Mon Projet"}
 ```
-Response: `201 Created` + `Project`
 
-### Détail d'un projet
+**Request body:** `application/json`
+
+```json
+{
+  "name": "..."
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### GET /api/projects/{slug}
+
 ```
 GET /api/projects/{slug}
 ```
-Response: `Project` ou `404`
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}
+
+```
+DELETE /api/projects/{slug}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
 
 ## Tickets
 
-### Lister les tickets d'un projet
+### GET /api/projects/{slug}/tickets
+
 ```
 GET /api/projects/{slug}/tickets
-GET /api/projects/{slug}/tickets?status=InProgress
-GET /api/projects/{slug}/tickets?priority=Critical
-GET /api/projects/{slug}/tickets?assignedTo=owner
-GET /api/projects/{slug}/tickets?createdBy=agent:claude
-GET /api/projects/{slug}/tickets?search=login
 ```
-Statuts possibles: `Backlog`, `Todo`, `InProgress`, `Blocked`, `OwnerReview`, `Done`
 
-La recherche par `search` couvre le titre, la description et le contenu des commentaires.
+**Parameters:**
 
-Response: `TicketSummary[]`
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `status` | query | string | No |
+| `priority` | query | `TicketPriority` | No |
+| `assignedTo` | query | string | No |
+| `createdBy` | query | string | No |
+| `search` | query | string | No |
 
-### Créer un ticket
+**Responses:**
+
+- `200` OK
+
+---
+
+### POST /api/projects/{slug}/tickets
+
 ```
 POST /api/projects/{slug}/tickets
-Content-Type: application/json
+```
 
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Request body:** `application/json`
+
+```json
 {
-  "title": "Implémenter le login",
-  "description": "Ajouter OAuth2",
-  "createdBy": "agent:claude",
-  "status": "Backlog"
+  "title": "...",
+  "createdBy": "...",
+  "status": "...",
+  "description": "..."  // optional,
+  "labelIds": []  // optional,
+  "priority": "Idea"  // optional,
+  "assignedTo": "..."  // optional
 }
 ```
-Champs optionnels: `description` (défaut: ""), `createdBy` (défaut: "owner"), `status` (défaut: "Backlog")
 
-Response: `201 Created` + `Ticket`
+**Responses:**
 
-### Détail d'un ticket (avec commentaires)
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/tickets/{id}
+
+```
+PATCH /api/projects/{slug}/tickets/{id}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "author": "...",
+  "title": "..."  // optional,
+  "description": "..."  // optional,
+  "priority": null  // optional,
+  "assignedTo": "..."  // optional
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### GET /api/projects/{slug}/tickets/{id}
+
 ```
 GET /api/projects/{slug}/tickets/{id}
 ```
-Response: `Ticket` (inclut `comments[]`) ou `404`
 
-### Supprimer un ticket
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/tickets/{id}
+
 ```
 DELETE /api/projects/{slug}/tickets/{id}
 ```
-Response: `204 No Content` ou `404`
 
-### Déplacer un ticket
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/tickets/{id}/status
+
 ```
 PATCH /api/projects/{slug}/tickets/{id}/status
-Content-Type: application/json
-
-{"status": "InProgress", "author": "agent:claude"}
 ```
-Response: `Ticket` ou `404` ou `400` si la colonne n'existe pas
 
-## Commentaires
+**Parameters:**
 
-### Ajouter un commentaire
-```
-POST /api/projects/{slug}/tickets/{id}/comments
-Content-Type: application/json
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
 
+**Request body:** `application/json`
+
+```json
 {
-  "content": "J'ai commencé l'implémentation",
-  "author": "agent:claude"
+  "status": "...",
+  "author": "..."
 }
 ```
-Champ optionnel: `author` (défaut: "owner")
 
-Response: `201 Created` + `Comment`
+**Responses:**
 
-## Modèles
+- `200` OK
 
-### Project
-```json
-{"id": 1, "name": "Mon Projet", "slug": "mon-projet", "createdAt": "2026-03-27T10:00:00Z"}
+---
+
+### PUT /api/projects/{slug}/tickets/{id}/parent
+
+```
+PUT /api/projects/{slug}/tickets/{id}/parent
 ```
 
-### TicketSummary
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
 ```json
-{"id": 1, "title": "...", "description": "...", "status": "Backlog", "priority": "NiceToHave", "sortOrder": 0, "assignedTo": null, "createdBy": "owner", "createdAt": "...", "updatedAt": "...", "labels": [], "commentCount": 2, "lastActivityAt": "..."}
+{
+  "parentId": 0
+}
 ```
 
-### Ticket
-```json
-{"id": 1, "title": "...", "description": "...", "status": "Backlog", "createdBy": "owner", "createdAt": "...", "updatedAt": "...", "comments": [], "activities": [], "labels": []}
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/tickets/{id}/parent
+
+```
+DELETE /api/projects/{slug}/tickets/{id}/parent
 ```
 
-### Comment
-```json
-{"id": 1, "ticketId": 1, "content": "...", "author": "agent:claude", "createdAt": "..."}
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/tickets/{id}/reorder
+
+```
+PATCH /api/projects/{slug}/tickets/{id}/reorder
 ```
 
-## Convention `createdBy` / `author`
-- Owner: `"owner"`
-- Agents: `"agent:{nom}"` (ex: `"agent:claude"`, `"agent:codex"`)
+**Parameters:**
 
-## OpenAPI
-Spec complète disponible sur: `GET /openapi/v1.json`
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "status": "...",
+  "index": 0
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Comments
+
+### POST /api/projects/{slug}/tickets/{id}/comments
+
+```
+POST /api/projects/{slug}/tickets/{id}/comments
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "content": "...",
+  "author": "..."
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/tickets/{id}/comments/{commentId}
+
+```
+PATCH /api/projects/{slug}/tickets/{id}/comments/{commentId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+| `commentId` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "content": "...",
+  "author": "..."
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/tickets/{id}/comments/{commentId}
+
+```
+DELETE /api/projects/{slug}/tickets/{id}/comments/{commentId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+| `commentId` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Activity
+
+### GET /api/projects/{slug}/tickets/{id}/activity
+
+```
+GET /api/projects/{slug}/tickets/{id}/activity
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Labels
+
+### GET /api/projects/{slug}/labels
+
+```
+GET /api/projects/{slug}/labels
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### POST /api/projects/{slug}/labels
+
+```
+POST /api/projects/{slug}/labels
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "name": "...",
+  "color": "..."  // optional
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/labels/{labelId}
+
+```
+DELETE /api/projects/{slug}/labels/{labelId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `labelId` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/labels/{labelId}
+
+```
+PATCH /api/projects/{slug}/labels/{labelId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `labelId` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "name": "..."  // optional,
+  "color": "..."  // optional
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### GET /api/projects/{slug}/tickets/{id}/labels
+
+```
+GET /api/projects/{slug}/tickets/{id}/labels
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PUT /api/projects/{slug}/tickets/{id}/labels
+
+```
+PUT /api/projects/{slug}/tickets/{id}/labels
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `id` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "labelIds": []
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Members
+
+### GET /api/projects/{slug}/members
+
+```
+GET /api/projects/{slug}/members
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### POST /api/projects/{slug}/members
+
+```
+POST /api/projects/{slug}/members
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "name": "..."
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### PATCH /api/projects/{slug}/members/{memberId}
+
+```
+PATCH /api/projects/{slug}/members/{memberId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `memberId` | path | integer (int32) | Yes |
+
+**Request body:** `application/json`
+
+```json
+{
+  "name": "..."
+}
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+### DELETE /api/projects/{slug}/members/{memberId}
+
+```
+DELETE /api/projects/{slug}/members/{memberId}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `memberId` | path | integer (int32) | Yes |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Mentions
+
+### GET /api/projects/{slug}/mentions/{handle}
+
+```
+GET /api/projects/{slug}/mentions/{handle}
+```
+
+**Parameters:**
+
+| Name | In | Type | Required |
+|------|-----|------|----------|
+| `slug` | path | string | Yes |
+| `handle` | path | string | Yes |
+| `since` | query | string (date-time) | No |
+| `until` | query | string (date-time) | No |
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Images
+
+### POST /api/images
+
+```
+POST /api/images
+```
+
+**Responses:**
+
+- `200` OK
+
+---
+
+## Models
+
+### AddCommentRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `content` | string | Yes |
+| `author` | string | Yes |
+
+### CreateColumnRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+| `color` | string | No |
+
+### CreateLabelRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+| `color` | string | No |
+
+### CreateMemberRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+
+### CreateProjectRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+
+### CreateTicketRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `title` | string | Yes |
+| `createdBy` | string | Yes |
+| `status` | string | Yes |
+| `description` | string | No |
+| `labelIds` | integer (int32)[] | No |
+| `priority` | `TicketPriority` | No |
+| `assignedTo` | string? | No |
+
+### MoveTicketRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `status` | string | Yes |
+| `author` | string | Yes |
+
+### ReorderColumnRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `columnId` | integer (int32) | Yes |
+| `index` | integer (int32) | Yes |
+
+### ReorderTicketRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `status` | string | Yes |
+| `index` | integer (int32) | Yes |
+
+### SetParentRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `parentId` | integer (int32) | Yes |
+
+### SetTicketLabelsRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `labelIds` | integer (int32)[] | Yes |
+
+### TicketPriority
+
+Enum values:
+
+- `Idea`
+- `NiceToHave`
+- `Required`
+- `Critical`
+- `null`
+
+### UpdateCommentRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `content` | string | Yes |
+| `author` | string | Yes |
+
+### UpdateLabelRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string? | No |
+| `color` | string? | No |
+
+### UpdateMemberRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+
+### UpdateTicketRequest
+
+| Field | Type | Required |
+|-------|------|----------|
+| `author` | string | Yes |
+| `title` | string? | No |
+| `description` | string? | No |
+| `priority` | object | No |
+| `assignedTo` | string? | No |
+
+---
+
+## Conventions
+
+- `createdBy` / `author`: `"owner"` pour l'utilisateur, `"agent:{name}"` pour les agents (ex: `"agent:claude"`)
+- OpenAPI JSON: `GET /openapi/v1.json`
+- Cette doc est auto-générée depuis la spec OpenAPI.
+
