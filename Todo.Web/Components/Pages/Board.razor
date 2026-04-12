@@ -28,6 +28,14 @@ else
     <div class="page-header">
         <a href="/" class="back-link">&larr; Projets</a>
         <h1>@_project.Name</h1>
+        @if (_subKanbanParentId is not null && _subKanbanParent is not null)
+        {
+            <div class="sub-kanban-breadcrumb">
+                <button class="breadcrumb-back" @onclick="ExitSubKanban">&larr; Board principal</button>
+                <span class="breadcrumb-separator">/</span>
+                <span class="breadcrumb-parent">#@_subKanbanParent.Id &mdash; @_subKanbanParent.Title</span>
+            </div>
+        }
         <div class="filter-bar">
             <div class="filter-input-wrapper">
                 <span class="filter-icon">&#128269;</span>
@@ -103,47 +111,68 @@ else
                 </div>
                 <div class="column-body">
                     @{ var columnTickets = GetTickets(col.Name); }
-                    @for (int i = 0; i < columnTickets.Count; i++)
+                    @for (int i = 0; i <= columnTickets.Count; i++)
                     {
-                        var ticket = columnTickets[i];
-                        var index = i;
-                        @if (_dragOverStatus == col.Name && _dragInsertIndex == index && _draggedTicket is not null && _draggedTicket.Id != ticket.Id)
+                        var slotIndex = i;
+                        @if (_draggedTicket is not null)
                         {
-                            <div class="drop-indicator"></div>
+                            var isActiveSlot = _dragOverStatus == col.Name && _dragActiveSlot == slotIndex && !IsNoOpReorder(col.Name, slotIndex);
+                            <div class="drop-slot @(isActiveSlot ? "active" : "")"
+                                 @ondragover="() => OnDragOverSlot(col.Name, slotIndex)"
+                                 @ondragover:preventDefault
+                                 @ondragover:stopPropagation
+                                 @ondrop="() => OnDropReorder(col.Name, slotIndex)"
+                                 @ondrop:preventDefault
+                                 @ondrop:stopPropagation>
+                                @if (isActiveSlot) { <span>Placer ici</span> }
+                            </div>
                         }
-                        <div class="ticket-card @(_selectedTicket?.Id == ticket.Id ? "selected" : "") @(_draggedTicket?.Id == ticket.Id ? "dragging" : "")"
-                             draggable="true"
-                             @ondragstart="() => OnDragStart(ticket)"
-                             @ondragend="OnDragEnd"
-                             @ondragover="(e) => OnDragOverCard(col.Name, index, e)"
-                             @ondragover:preventDefault
-                             @onclick="() => SelectTicket(ticket)">
-                            <div class="ticket-card-top">
-                                <span class="priority-dot priority-@GetPriorityClass(ticket.Priority)" title="@GetPriorityLabel(ticket.Priority)"></span>
-                                <span class="ticket-id">#@ticket.Id</span>
-                            </div>
-                            <span class="ticket-title">@ticket.Title</span>
-                            @if (ticket.Labels.Count > 0)
-                            {
-                                <div class="label-list">
-                                    @foreach (var label in ticket.Labels)
-                                    {
-                                        <span class="label-pill" style="--lc: @label.Color">@label.Name</span>
-                                    }
+                        @if (i < columnTickets.Count)
+                        {
+                            var ticket = columnTickets[i];
+                            var index = i;
+                            var isCardTarget = _draggedTicket is not null && _dragActiveSlot < 0 && _dragOverStatus == col.Name && _dragHoverIndex == index && _dropTargetTicketId == ticket.Id;
+                            <div class="ticket-card @(_selectedTicket?.Id == ticket.Id ? "selected" : "") @(_draggedTicket?.Id == ticket.Id ? "dragging" : "") @(isCardTarget ? "drop-target" : "")"
+                                 draggable="true"
+                                 @ondragstart="() => OnDragStart(ticket)"
+                                 @ondragend="OnDragEnd"
+                                 @ondragover="() => OnDragOverCard(col.Name, index, ticket)"
+                                 @ondragover:preventDefault
+                                 @ondragover:stopPropagation
+                                 @ondrop="() => OnDropAsChild(ticket, col.Name)"
+                                 @ondrop:preventDefault
+                                 @ondrop:stopPropagation
+                                 @onclick="() => SelectTicket(ticket)">
+                                <div class="ticket-card-top">
+                                    <span class="priority-dot priority-@GetPriorityClass(ticket.Priority)" title="@GetPriorityLabel(ticket.Priority)"></span>
+                                    <span class="ticket-id">#@ticket.Id</span>
                                 </div>
-                            }
-                            <div class="ticket-card-bottom">
-                                @if (!string.IsNullOrEmpty(ticket.AssignedTo))
+                                <span class="ticket-title">@ticket.Title</span>
+                                @if (ticket.Labels.Count > 0)
                                 {
-                                    <span class="assignee-badge" title="@ticket.AssignedTo">@MemberDisplayName(ticket.AssignedTo)</span>
+                                    <div class="label-list">
+                                        @foreach (var label in ticket.Labels)
+                                        {
+                                            <span class="label-pill" style="--lc: @label.Color">@label.Name</span>
+                                        }
+                                    </div>
                                 }
-                                <small class="ticket-author">@ticket.CreatedBy</small>
+                                @if (ticket.SubTickets.Count > 0)
+                                {
+                                    <div class="sub-ticket-indicator" @onclick="() => EnterSubKanban(ticket)" @onclick:stopPropagation title="Voir les sous-tickets">
+                                        <span class="sub-ticket-icon">&#128194;</span>
+                                        <span>@ticket.SubTickets.Count(s => s.Status == _columns.LastOrDefault()?.Name)/@ticket.SubTickets.Count</span>
+                                    </div>
+                                }
+                                <div class="ticket-card-bottom">
+                                    @if (!string.IsNullOrEmpty(ticket.AssignedTo))
+                                    {
+                                        <span class="assignee-badge" title="@ticket.AssignedTo">@MemberDisplayName(ticket.AssignedTo)</span>
+                                    }
+                                    <small class="ticket-author">@ticket.CreatedBy</small>
+                                </div>
                             </div>
-                        </div>
-                    }
-                    @if (_dragOverStatus == col.Name && _dragInsertIndex >= columnTickets.Count && _draggedTicket is not null)
-                    {
-                        <div class="drop-indicator"></div>
+                        }
                     }
                 </div>
                 @if (col == _columns[0])
@@ -160,14 +189,28 @@ else
     @* ── Trash drop zone (visible during drag) ── *@
     @if (_draggedTicket is not null || _draggedColumn is not null)
     {
-        <div class="trash-zone @(_trashHover ? "trash-zone-hover" : "")"
-             @ondragover="OnTrashDragOver"
-             @ondragover:preventDefault
-             @ondragleave="() => _trashHover = false"
-             @ondrop="OnTrashDrop"
-             @ondrop:preventDefault>
-            <span class="trash-icon">&#128465;</span>
-            <span>Supprimer</span>
+        <div class="bottom-drop-zones">
+            @if (_draggedTicket is not null && _subKanbanParentId is not null)
+            {
+                <div class="unparent-zone @(_unparentHover ? "unparent-zone-hover" : "")"
+                     @ondragover="OnUnparentDragOver"
+                     @ondragover:preventDefault
+                     @ondragleave="() => _unparentHover = false"
+                     @ondrop="OnUnparentDrop"
+                     @ondrop:preventDefault>
+                    <span class="unparent-icon">&#128279;</span>
+                    <span>Dissocier</span>
+                </div>
+            }
+            <div class="trash-zone @(_trashHover ? "trash-zone-hover" : "")"
+                 @ondragover="OnTrashDragOver"
+                 @ondragover:preventDefault
+                 @ondragleave="() => _trashHover = false"
+                 @ondrop="OnTrashDrop"
+                 @ondrop:preventDefault>
+                <span class="trash-icon">&#128465;</span>
+                <span>Supprimer</span>
+            </div>
         </div>
     }
 
@@ -391,6 +434,37 @@ else
                 </div>
             </div>
 
+            @* ── Sub-tickets section ── *@
+            @{ var selectedSummary = _tickets.FirstOrDefault(t => t.Id == _selectedTicket.Id); }
+            @if (selectedSummary?.SubTickets is { Count: > 0 })
+            {
+                <div class="sub-tickets-section">
+                    <div class="section-header">
+                        <span class="section-label">Sous-tickets (@selectedSummary.SubTickets.Count)</span>
+                        <button class="sub-kanban-btn" @onclick="() => EnterSubKanban(selectedSummary)">Voir tout &#8594;</button>
+                    </div>
+                    <div class="sub-ticket-list">
+                        @foreach (var sub in selectedSummary.SubTickets)
+                        {
+                            <div class="sub-ticket-row">
+                                <span class="sub-ticket-status-dot" style="background: @GetColumnColor(sub.Status)"></span>
+                                <span class="sub-ticket-id">#@sub.Id</span>
+                                <span class="sub-ticket-title">@sub.Title</span>
+                                <span class="sub-ticket-status">@sub.Status</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            @if (_selectedTicket.ParentId is not null)
+            {
+                var parentSummary = _tickets.FirstOrDefault(t => t.Id == _selectedTicket.ParentId);
+                <div class="parent-ticket-section">
+                    <span class="section-label-sm">Parent&#160;:</span>
+                    <span class="parent-ticket-link">#@_selectedTicket.ParentId @(parentSummary?.Title ?? "")</span>
+                </div>
+            }
+
             @* ── Ticket body (thread layout) ── *@
                 <div class="ticket-panel-thread">
                     <div class="section-header">
@@ -565,7 +639,8 @@ else
     private Ticket? _selectedTicket;
     private TicketSummary? _draggedTicket;
     private string? _dragOverStatus;
-    private int _dragInsertIndex = -1;
+    private int _dragHoverIndex = -1;
+    private int _dragActiveSlot = -1;
 
     // Column drag & drop
     private BoardColumn? _draggedColumn;
@@ -635,6 +710,12 @@ else
 
     // Inline comment
     private bool _addingComment = false;
+
+    // Sub-ticket / sub-kanban
+    private int? _subKanbanParentId = null;
+    private TicketSummary? _subKanbanParent = null;
+    private bool _unparentHover = false;
+    private int? _dropTargetTicketId = null;
 
     // Fullscreen editor
     private string _fullscreenTarget = ""; // "description", "newComment", "editComment"
@@ -789,7 +870,17 @@ else
 
     private List<TicketSummary> GetTickets(string status)
     {
-        var tickets = _tickets.Where(t => t.Status == status);
+        IEnumerable<TicketSummary> tickets;
+        if (_subKanbanParentId is not null)
+        {
+            // Sub-kanban: only children of the parent ticket
+            tickets = _tickets.Where(t => t.ParentId == _subKanbanParentId && t.Status == status);
+        }
+        else
+        {
+            // Main board: only top-level tickets (no parent)
+            tickets = _tickets.Where(t => t.ParentId is null && t.Status == status);
+        }
 
         if (!string.IsNullOrWhiteSpace(_filterText))
             tickets = ApplyFilter(tickets);
@@ -894,8 +985,11 @@ else
     {
         _draggedTicket = null;
         _dragOverStatus = null;
-        _dragInsertIndex = -1;
+        _dragHoverIndex = -1;
+        _dragActiveSlot = -1;
         _trashHover = false;
+        _unparentHover = false;
+        _dropTargetTicketId = null;
     }
 
     // Column drag handlers
@@ -929,32 +1023,52 @@ else
         _colDropIndex = -1;
     }
 
-    private void OnDragOverCard(string status, int cardIndex, DragEventArgs e)
+    private void OnDragOverCard(string status, int cardIndex, TicketSummary ticket)
+    {
+        if (_draggedTicket is null || _draggedTicket.Id == ticket.Id) return;
+        _dragOverStatus = status;
+        _dragHoverIndex = cardIndex;
+        _dragActiveSlot = -1;
+        _dropTargetTicketId = (_subKanbanParentId is null) ? ticket.Id : null;
+    }
+
+    private void OnDragOverSlot(string status, int slotIndex)
     {
         if (_draggedTicket is null) return;
         _dragOverStatus = status;
-        // Use hysteresis: only flip insertion side when clearly past threshold,
-        // keep current side inside the dead zone to prevent oscillation.
-        var newIndex = e.OffsetY < 30 ? cardIndex : e.OffsetY > 50 ? cardIndex + 1 : _dragInsertIndex;
-        _dragInsertIndex = (newIndex >= 0) ? newIndex : cardIndex;
+        _dragActiveSlot = slotIndex;
+        _dragHoverIndex = -1;
+        _dropTargetTicketId = null;
     }
 
     private void OnDragOverColumn(string status, DragEventArgs e)
     {
         if (_draggedTicket is null) return;
         _dragOverStatus = status;
-        var count = GetTickets(status).Count;
-        if (_dragInsertIndex < 0 || _dragOverStatus != status)
-            _dragInsertIndex = count;
+        _dragHoverIndex = -1;
+        _dragActiveSlot = GetTickets(status).Count;
+        _dropTargetTicketId = null;
+    }
+
+    private bool IsNoOpReorder(string colName, int slotIndex)
+    {
+        if (_draggedTicket is null || _draggedTicket.Status != colName) return false;
+        var currentIndex = GetTickets(colName).FindIndex(t => t.Id == _draggedTicket.Id);
+        if (currentIndex < 0) return false;
+        return slotIndex == currentIndex || slotIndex == currentIndex + 1;
     }
 
     private async Task OnDrop(string newStatus)
     {
         if (_draggedTicket is null) return;
+        await OnDropReorder(newStatus, GetTickets(newStatus).Count);
+    }
 
-        var targetIndex = _dragInsertIndex >= 0 ? _dragInsertIndex : GetTickets(newStatus).Count;
+    private async Task OnDropReorder(string newStatus, int targetIndex)
+    {
+        if (_draggedTicket is null) return;
 
-        // If dropping in the same column, adjust index for the dragged item's removal
+        // Adjust for dragged item's removal
         if (_draggedTicket.Status == newStatus)
         {
             var currentIndex = GetTickets(newStatus).IndexOf(_draggedTicket);
@@ -966,7 +1080,64 @@ else
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _draggedTicket = null;
         _dragOverStatus = null;
-        _dragInsertIndex = -1;
+        _dragHoverIndex = -1;
+        _dragActiveSlot = -1;
+        _dropTargetTicketId = null;
+        RebuildPipeline();
+    }
+
+    private async Task OnDropAsChild(TicketSummary target, string colName)
+    {
+        if (_draggedTicket is null || _draggedTicket.Id == target.Id) return;
+
+        // In main board: make child
+        if (_dropTargetTicketId == target.Id && _subKanbanParentId is null)
+        {
+            await TicketService.SetParentAsync(Slug, _draggedTicket.Id, target.Id);
+            _tickets = await TicketService.ListTicketsAsync(Slug);
+            _draggedTicket = null;
+            _dragOverStatus = null;
+            _dragHoverIndex = -1;
+            _dragActiveSlot = -1;
+            _dropTargetTicketId = null;
+            RebuildPipeline();
+            return;
+        }
+
+        // In sub-kanban: reorder at this position
+        await OnDropReorder(colName, GetTickets(colName).IndexOf(target));
+    }
+
+    // Sub-kanban
+    private void EnterSubKanban(TicketSummary parent)
+    {
+        _subKanbanParentId = parent.Id;
+        _subKanbanParent = parent;
+        _selectedTicket = null;
+    }
+
+    private void ExitSubKanban()
+    {
+        _subKanbanParentId = null;
+        _subKanbanParent = null;
+    }
+
+    private string GetColumnColor(string status) =>
+        _columns.FirstOrDefault(c => c.Name == status)?.Color ?? "#5a6a80";
+
+    // Unparent drop zone
+    private void OnUnparentDragOver() => _unparentHover = true;
+
+    private async Task OnUnparentDrop()
+    {
+        _unparentHover = false;
+        if (_draggedTicket is null) return;
+        await TicketService.UnparentAsync(Slug, _draggedTicket.Id);
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _draggedTicket = null;
+        _dragOverStatus = null;
+        _dragHoverIndex = -1;
+        _dragActiveSlot = -1;
         RebuildPipeline();
     }
 
@@ -1163,7 +1334,8 @@ else
             _trashConfirmTicket = _draggedTicket;
             _draggedTicket = null;
             _dragOverStatus = null;
-            _dragInsertIndex = -1;
+            _dragHoverIndex = -1;
+            _dragActiveSlot = -1;
         }
     }
 

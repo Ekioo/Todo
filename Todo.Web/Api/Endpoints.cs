@@ -119,6 +119,21 @@ public static class Endpoints
             return deleted ? Results.NoContent() : Results.NotFound();
         }).WithTags("Tickets");
 
+        // Sub-tickets
+        api.MapPut("/projects/{slug}/tickets/{id:int}/parent", async (string slug, int id, SetParentRequest req, TicketService ts, BoardUpdateNotifier notifier) =>
+        {
+            var ok = await ts.SetParentAsync(slug, id, req.ParentId);
+            if (ok) notifier.NotifyProjectUpdated(slug);
+            return ok ? Results.NoContent() : Results.BadRequest(new { error = "Impossible d'associer ce sous-ticket." });
+        }).WithTags("Tickets");
+
+        api.MapDelete("/projects/{slug}/tickets/{id:int}/parent", async (string slug, int id, TicketService ts, BoardUpdateNotifier notifier) =>
+        {
+            var ok = await ts.UnparentAsync(slug, id);
+            if (ok) notifier.NotifyProjectUpdated(slug);
+            return ok ? Results.NoContent() : Results.NotFound();
+        }).WithTags("Tickets");
+
         // Comments
         api.MapPost("/projects/{slug}/tickets/{id:int}/comments", async (string slug, int id, AddCommentRequest req, TicketService ts, BoardUpdateNotifier notifier) =>
         {

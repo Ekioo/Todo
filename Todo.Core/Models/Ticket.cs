@@ -12,6 +12,7 @@ public class Ticket
     public string CreatedBy { get; set; } = "owner";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public int? ParentId { get; set; }
 
     public List<Comment> Comments { get; set; } = [];
     public List<ActivityEntry> Activities { get; set; } = [];

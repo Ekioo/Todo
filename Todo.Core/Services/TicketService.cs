@@ -63,6 +63,15 @@ public class TicketService
         catch { /* column already exists */ }
     }
 
+    private static async Task EnsureParentIdColumnAsync(TodoDbContext db)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE Tickets ADD COLUMN ParentId INTEGER NULL");
+        }
+        catch { /* column already exists */ }
+    }
+
     public async Task<List<TicketSummary>> ListTicketsAsync(string projectSlug, string? statusFilter = null, TicketPriority? priorityFilter = null, string? assignedTo = null, string? createdBy = null, string? search = null)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
@@ -70,6 +79,7 @@ public class TicketService
         await EnsureLabelTablesAsync(db);
         await EnsureSortOrderColumnAsync(db);
         await EnsureAssignedToColumnAsync(db);
+        await EnsureParentIdColumnAsync(db);
         await ColumnService.EnsureBoardColumnsTableAsync(db);
         var query = db.Tickets.Include(t => t.Labels).AsQueryable();
         if (statusFilter is not null)
@@ -82,15 +92,28 @@ public class TicketService
             query = query.Where(t => t.CreatedBy == createdBy);
         if (search is not null)
             query = query.Where(t => t.Title.Contains(search) || t.Description.Contains(search) || t.Comments.Any(c => c.Content.Contains(search)));
-        return await query
+
+        var allTickets = await query
             .OrderBy(t => t.SortOrder).ThenBy(t => t.CreatedAt)
             .Select(t => new TicketSummary(
                 t.Id, t.Title, t.Description, t.Status, t.Priority, t.SortOrder,
                 t.AssignedTo, t.CreatedBy, t.CreatedAt, t.UpdatedAt,
                 t.Labels,
                 t.Comments.Count,
-                t.Activities.Max(a => (DateTime?)a.CreatedAt)))
+                t.Activities.Max(a => (DateTime?)a.CreatedAt),
+                t.ParentId,
+                new List<SubTicketInfo>()))
             .ToListAsync();
+
+        // Build sub-ticket info for parent tickets
+        var childrenByParent = allTickets
+            .Where(t => t.ParentId is not null)
+            .GroupBy(t => t.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(t => new SubTicketInfo(t.Id, t.Title, t.Status)).ToList());
+
+        return allTickets.Select(t => childrenByParent.TryGetValue(t.Id, out var subs)
+            ? t with { SubTickets = subs }
+            : t).ToList();
     }
 
     public async Task<Ticket?> GetTicketAsync(string projectSlug, int ticketId)
@@ -98,6 +121,7 @@ public class TicketService
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureActivityTableAsync(db);
         await EnsureLabelTablesAsync(db);
+        await EnsureParentIdColumnAsync(db);
         return await db.Tickets
             .Include(t => t.Comments.OrderBy(c => c.CreatedAt))
             .Include(t => t.Activities.OrderBy(a => a.CreatedAt))
@@ -232,14 +256,62 @@ public class TicketService
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
         await EnsureActivityTableAsync(db);
+        await EnsureParentIdColumnAsync(db);
         var ticket = await db.Tickets
             .Include(t => t.Comments)
             .Include(t => t.Activities)
             .FirstOrDefaultAsync(t => t.Id == ticketId);
         if (ticket is null) return false;
+        // Unparent any children before deleting
+        var children = await db.Tickets.Where(t => t.ParentId == ticketId).ToListAsync();
+        foreach (var child in children)
+            child.ParentId = null;
         db.Comments.RemoveRange(ticket.Comments);
         db.ActivityEntries.RemoveRange(ticket.Activities);
         db.Tickets.Remove(ticket);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> SetParentAsync(string projectSlug, int ticketId, int parentId, string author = "owner")
+    {
+        if (ticketId == parentId) return false;
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureParentIdColumnAsync(db);
+        await EnsureActivityTableAsync(db);
+        var ticket = await db.Tickets.FindAsync(ticketId);
+        var parent = await db.Tickets.FindAsync(parentId);
+        if (ticket is null || parent is null) return false;
+        // Prevent circular: parent must not itself be a child of ticketId
+        if (parent.ParentId == ticketId) return false;
+        ticket.ParentId = parentId;
+        ticket.UpdatedAt = DateTime.UtcNow;
+        db.ActivityEntries.Add(new ActivityEntry
+        {
+            TicketId = ticketId,
+            Author = author,
+            Text = $"est devenu sous-ticket de #{parentId}"
+        });
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> UnparentAsync(string projectSlug, int ticketId, string author = "owner")
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureParentIdColumnAsync(db);
+        await EnsureActivityTableAsync(db);
+        var ticket = await db.Tickets.FindAsync(ticketId);
+        if (ticket is null || ticket.ParentId is null) return false;
+        var oldParentId = ticket.ParentId.Value;
+        ticket.ParentId = null;
+        ticket.UpdatedAt = DateTime.UtcNow;
+        db.ActivityEntries.Add(new ActivityEntry
+        {
+            TicketId = ticketId,
+            Author = author,
+            Text = $"a été dissocié du ticket parent #{oldParentId}"
+        });
         await db.SaveChangesAsync();
         return true;
     }

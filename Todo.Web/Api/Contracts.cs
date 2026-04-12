@@ -16,3 +16,4 @@ public record CreateColumnRequest(string Name, string Color = "#5a6a80");
 public record ReorderColumnRequest(int ColumnId, int Index);
 public record CreateMemberRequest(string Name);
 public record UpdateMemberRequest(string Name);
+public record SetParentRequest(int ParentId);

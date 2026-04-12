@@ -13,4 +13,8 @@ public record TicketSummary(
     DateTime UpdatedAt,
     List<Label> Labels,
     int CommentCount,
-    DateTime? LastActivityAt);
+    DateTime? LastActivityAt,
+    int? ParentId,
+    List<SubTicketInfo> SubTickets);
+
+public record SubTicketInfo(int Id, string Title, string Status);
