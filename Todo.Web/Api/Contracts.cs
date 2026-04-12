@@ -3,7 +3,7 @@ using Todo.Core.Models;
 namespace Todo.Web.Api;
 
 public record CreateProjectRequest(string Name);
-public record CreateTicketRequest(string Title, string CreatedBy, string Status, string Description = "", List<int>? LabelIds = null, TicketPriority Priority = TicketPriority.NiceToHave, string? AssignedTo = null);
+public record CreateTicketRequest(string Title, string CreatedBy, string Status, string Description = "", List<int>? LabelIds = null, TicketPriority Priority = TicketPriority.NiceToHave, string? AssignedTo = null, int? ParentId = null);
 public record UpdateTicketRequest(string Author, string? Title = null, string? Description = null, TicketPriority? Priority = null, string? AssignedTo = null);
 public record MoveTicketRequest(string Status, string Author);
 public record AddCommentRequest(string Content, string Author);

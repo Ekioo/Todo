@@ -213,7 +213,8 @@ POST /api/projects/{slug}/tickets
   "description": "..."  // optional,
   "labelIds": []  // optional,
   "priority": "Idea"  // optional,
-  "assignedTo": "..."  // optional
+  "assignedTo": "..."  // optional,
+  "parentId": 0  // optional
 }
 ```
 
@@ -809,6 +810,7 @@ POST /api/images
 | `labelIds` | integer (int32)[] | No |
 | `priority` | `TicketPriority` | No |
 | `assignedTo` | string? | No |
+| `parentId` | integer (int32) | No |
 
 ### MoveTicketRequest
 

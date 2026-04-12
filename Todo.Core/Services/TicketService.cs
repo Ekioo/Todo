@@ -129,7 +129,7 @@ public class TicketService
             .FirstOrDefaultAsync(t => t.Id == ticketId);
     }
 
-    public async Task<Ticket> CreateTicketAsync(string projectSlug, string title, string description = "", string createdBy = "owner", string status = "Backlog", List<int>? labelIds = null, TicketPriority priority = TicketPriority.NiceToHave, string? assignedTo = null)
+    public async Task<Ticket> CreateTicketAsync(string projectSlug, string title, string description = "", string createdBy = "owner", string status = "Backlog", List<int>? labelIds = null, TicketPriority priority = TicketPriority.NiceToHave, string? assignedTo = null, int? parentId = null)
     {
         if (string.IsNullOrWhiteSpace(createdBy))
             throw new InvalidOperationException("Le champ 'createdBy' est requis.");
@@ -139,6 +139,13 @@ public class TicketService
         await EnsureActivityTableAsync(db);
         await EnsureLabelTablesAsync(db);
         await EnsureAssignedToColumnAsync(db);
+        await EnsureParentIdColumnAsync(db);
+        if (parentId is not null)
+        {
+            var parentExists = await db.Tickets.AnyAsync(t => t.Id == parentId.Value);
+            if (!parentExists)
+                throw new InvalidOperationException($"Le ticket parent #{parentId} n'existe pas.");
+        }
         var maxSort = await db.Tickets.Where(t => t.Status == status).Select(t => (int?)t.SortOrder).MaxAsync() ?? -1;
         var ticket = new Ticket
         {
@@ -148,7 +155,8 @@ public class TicketService
             Status = status,
             Priority = priority,
             SortOrder = maxSort + 1,
-            AssignedTo = assignedTo
+            AssignedTo = assignedTo,
+            ParentId = parentId
         };
         if (labelIds is { Count: > 0 })
         {
