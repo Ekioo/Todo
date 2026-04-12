@@ -1003,8 +1003,9 @@ else
 
     private async Task CreateTicket()
     {
-        if (string.IsNullOrWhiteSpace(_newTicketTitle)) return;
-        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), labelIds: _newTicketLabelIds, priority: _newTicketPriority, assignedTo: string.IsNullOrEmpty(_newTicketAssignedTo) ? null : _newTicketAssignedTo);
+        if (string.IsNullOrWhiteSpace(_newTicketTitle) || _columns.Count == 0) return;
+        var status = _columns[0].Name;
+        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), status: status, labelIds: _newTicketLabelIds, priority: _newTicketPriority, assignedTo: string.IsNullOrEmpty(_newTicketAssignedTo) ? null : _newTicketAssignedTo);
         _showCreatePopup = false;
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
