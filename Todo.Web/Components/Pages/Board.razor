@@ -68,6 +68,12 @@ else
             </div>
         </div>
         <div class="header-right">
+            <button class="header-action-btn undo-btn"
+                    @onclick="PerformUndo"
+                    disabled="@(!_undoStack.Any())"
+                    title="@(_undoStack.Any() ? $"Annuler : {_undoStack.Peek().Label}" : "Rien à annuler (Ctrl+Z)")">
+                &#8630;
+            </button>
             @if (_showAddColumn)
             {
                 <div class="add-column-form">
@@ -720,6 +726,41 @@ else
     private bool _unparentHover = false;
     private int? _dropTargetTicketId = null;
 
+    // Undo
+    private record UndoAction(string Label, Func<Task> Undo);
+    private readonly Stack<UndoAction> _undoStack = new();
+    private const int MaxUndoSize = 30;
+    private IJSObjectReference? _undoHandler;
+    private DotNetObjectReference<Board>? _dotNetRef;
+
+    private void PushUndo(string label, Func<Task> undo)
+    {
+        if (_undoStack.Count >= MaxUndoSize)
+        {
+            var items = _undoStack.ToArray();
+            _undoStack.Clear();
+            for (int i = items.Length - 2; i >= 0; i--)
+                _undoStack.Push(items[i]);
+        }
+        _undoStack.Push(new UndoAction(label, undo));
+    }
+
+    [JSInvokable]
+    public async Task OnCtrlZ() => await PerformUndo();
+
+    private async Task PerformUndo()
+    {
+        if (!_undoStack.Any()) return;
+        var action = _undoStack.Pop();
+        await action.Undo();
+        _tickets = await TicketService.ListTicketsAsync(Slug);
+        _columns = await ColumnService.ListColumnsAsync(Slug);
+        if (_selectedTicket is not null)
+            _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        RebuildPipeline();
+        StateHasChanged();
+    }
+
     // Fullscreen editor
     private string _fullscreenTarget = ""; // "description", "newComment", "editComment"
     private string _fullscreenText = "";
@@ -767,8 +808,12 @@ else
             case "description":
                 if (_selectedTicket is not null)
                 {
-                    await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, description: text);
-                    _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+                    var oldDesc = _selectedTicket.Description;
+                    var descTicketId = _selectedTicket.Id;
+                    await TicketService.UpdateTicketAsync(Slug, descTicketId, description: text);
+                    PushUndo($"Description #{descTicketId}", async () =>
+                        await TicketService.UpdateTicketAsync(Slug, descTicketId, description: oldDesc));
+                    _selectedTicket = await TicketService.GetTicketAsync(Slug, descTicketId);
                 }
                 break;
             case "newComment":
@@ -782,9 +827,14 @@ else
             case "editComment":
                 if (_selectedTicket is not null && _editingCommentId is not null)
                 {
-                    await TicketService.UpdateCommentAsync(Slug, _selectedTicket.Id, _editingCommentId.Value, text.Trim());
+                    var oldComment = _editComment;
+                    var commentId = _editingCommentId.Value;
+                    var editTicketId = _selectedTicket.Id;
+                    await TicketService.UpdateCommentAsync(Slug, editTicketId, commentId, text.Trim());
+                    PushUndo($"Commentaire #{editTicketId}", async () =>
+                        await TicketService.UpdateCommentAsync(Slug, editTicketId, commentId, oldComment));
                     _editingCommentId = null;
-                    _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+                    _selectedTicket = await TicketService.GetTicketAsync(Slug, editTicketId);
                 }
                 break;
         }
@@ -855,6 +905,9 @@ else
     public void Dispose()
     {
         BoardUpdateNotifier.OnProjectUpdated -= OnProjectUpdatedExternal;
+        if (_undoHandler is not null)
+            _ = JS.InvokeVoidAsync("unregisterUndoShortcut", _undoHandler);
+        _dotNetRef?.Dispose();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -881,6 +934,11 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            _undoHandler = await JS.InvokeAsync<IJSObjectReference>("registerUndoShortcut", _dotNetRef);
+        }
         if (!string.IsNullOrEmpty(_fullscreenTarget) && !_pasteListenerAttached)
         {
             _pasteListenerAttached = true;
@@ -989,8 +1047,12 @@ else
     private async Task SetPriority(TicketPriority p)
     {
         if (_selectedTicket is null || _selectedTicket.Priority == p) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, priority: p);
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        var oldPriority = _selectedTicket.Priority;
+        var ticketId = _selectedTicket.Id;
+        await TicketService.UpdateTicketAsync(Slug, ticketId, priority: p);
+        PushUndo($"Priorité #{ticketId}", async () =>
+            await TicketService.UpdateTicketAsync(Slug, ticketId, priority: oldPriority));
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
     }
 
@@ -1089,6 +1151,10 @@ else
     {
         if (_draggedTicket is null) return;
 
+        var oldStatus = _draggedTicket.Status;
+        var oldIndex = _draggedTicket.SortOrder;
+        var ticketId = _draggedTicket.Id;
+
         // Adjust for dragged item's removal
         if (_draggedTicket.Status == newStatus)
         {
@@ -1097,7 +1163,9 @@ else
                 targetIndex--;
         }
 
-        await TicketService.ReorderTicketAsync(Slug, _draggedTicket.Id, newStatus, targetIndex);
+        await TicketService.ReorderTicketAsync(Slug, ticketId, newStatus, targetIndex);
+        PushUndo($"Déplacer #{ticketId}", async () =>
+            await TicketService.ReorderTicketAsync(Slug, ticketId, oldStatus, oldIndex));
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _draggedTicket = null;
         _dragOverStatus = null;
@@ -1114,7 +1182,10 @@ else
         // In main board: make child
         if (_dropTargetTicketId == target.Id && _subKanbanParentId is null)
         {
-            await TicketService.SetParentAsync(Slug, _draggedTicket.Id, target.Id);
+            var childId = _draggedTicket.Id;
+            await TicketService.SetParentAsync(Slug, childId, target.Id);
+            PushUndo($"Associer #{childId} → #{target.Id}", async () =>
+                await TicketService.UnparentAsync(Slug, childId));
             _tickets = await TicketService.ListTicketsAsync(Slug);
             _draggedTicket = null;
             _dragOverStatus = null;
@@ -1155,7 +1226,11 @@ else
     {
         _unparentHover = false;
         if (_draggedTicket is null) return;
-        await TicketService.UnparentAsync(Slug, _draggedTicket.Id);
+        var childId = _draggedTicket.Id;
+        var oldParentId = _subKanbanParentId!.Value;
+        await TicketService.UnparentAsync(Slug, childId);
+        PushUndo($"Dissocier #{childId}", async () =>
+            await TicketService.SetParentAsync(Slug, childId, oldParentId));
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _draggedTicket = null;
         _dragOverStatus = null;
@@ -1199,7 +1274,10 @@ else
     {
         if (string.IsNullOrWhiteSpace(_newTicketTitle) || _columns.Count == 0) return;
         var status = _columns[0].Name;
-        await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), status: status, labelIds: _newTicketLabelIds, priority: _newTicketPriority, assignedTo: string.IsNullOrEmpty(_newTicketAssignedTo) ? null : _newTicketAssignedTo, parentId: _subKanbanParentId);
+        var ticket = await TicketService.CreateTicketAsync(Slug, _newTicketTitle.Trim(), _newTicketDescription.Trim(), status: status, labelIds: _newTicketLabelIds, priority: _newTicketPriority, assignedTo: string.IsNullOrEmpty(_newTicketAssignedTo) ? null : _newTicketAssignedTo, parentId: _subKanbanParentId);
+        if (ticket is not null)
+            PushUndo($"Créer #{ticket.Id}", async () =>
+                await TicketService.DeleteTicketAsync(Slug, ticket.Id));
         _showCreatePopup = false;
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
@@ -1238,7 +1316,11 @@ else
     private async Task DeleteSelectedTicket()
     {
         if (_selectedTicket is null) return;
-        await TicketService.DeleteTicketAsync(Slug, _selectedTicket.Id);
+        var t = _selectedTicket;
+        var labelIds = t.Labels.Select(l => l.Id).ToList();
+        await TicketService.DeleteTicketAsync(Slug, t.Id);
+        PushUndo($"Supprimer #{t.Id}", async () =>
+            await TicketService.CreateTicketAsync(Slug, t.Title, t.Description, t.CreatedBy, t.Status, labelIds, t.Priority, t.AssignedTo, t.ParentId));
         _selectedTicket = null;
         _confirmDelete = false;
         _tickets = await TicketService.ListTicketsAsync(Slug);
@@ -1276,9 +1358,13 @@ else
     private async Task SaveTitle()
     {
         if (_selectedTicket is null || string.IsNullOrWhiteSpace(_editTitle)) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, title: _editTitle.Trim());
+        var oldTitle = _selectedTicket.Title;
+        var ticketId = _selectedTicket.Id;
+        await TicketService.UpdateTicketAsync(Slug, ticketId, title: _editTitle.Trim());
+        PushUndo($"Renommer #{ticketId}", async () =>
+            await TicketService.UpdateTicketAsync(Slug, ticketId, title: oldTitle));
         _editingTitle = false;
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
     }
@@ -1315,7 +1401,12 @@ else
     private async Task AddColumn()
     {
         if (string.IsNullOrWhiteSpace(_newColumnName)) return;
-        await ColumnService.CreateColumnAsync(Slug, _newColumnName.Trim(), _newColumnColor);
+        var col = await ColumnService.CreateColumnAsync(Slug, _newColumnName.Trim(), _newColumnColor);
+        if (col is not null)
+            PushUndo($"Colonne {col.Name}", async () =>
+            {
+                await ColumnService.DeleteColumnAsync(Slug, col.Id, _columns.FirstOrDefault(c => c.Id != col.Id)?.Name ?? "Backlog");
+            });
         _columns = await ColumnService.ListColumnsAsync(Slug);
         _newColumnName = "";
         _newColumnColor = "#5a6a80";
@@ -1383,7 +1474,12 @@ else
     private async Task ConfirmTrashTicket()
     {
         if (_trashConfirmTicket is null) return;
-        await TicketService.DeleteTicketAsync(Slug, _trashConfirmTicket.Id);
+        var t = _trashConfirmTicket;
+        var full = await TicketService.GetTicketAsync(Slug, t.Id);
+        var labelIds = full?.Labels.Select(l => l.Id).ToList() ?? [];
+        await TicketService.DeleteTicketAsync(Slug, t.Id);
+        PushUndo($"Supprimer #{t.Id}", async () =>
+            await TicketService.CreateTicketAsync(Slug, t.Title, t.Description, t.CreatedBy, t.Status, labelIds, t.Priority, t.AssignedTo, t.ParentId));
         _trashConfirmTicket = null;
         _tickets = await TicketService.ListTicketsAsync(Slug);
         RebuildPipeline();
@@ -1404,10 +1500,14 @@ else
     private async Task AddExistingLabel(Label label)
     {
         if (_selectedTicket is null) return;
-        var ids = _selectedTicket.Labels.Select(l => l.Id).ToList();
+        var oldIds = _selectedTicket.Labels.Select(l => l.Id).ToList();
+        var ticketId = _selectedTicket.Id;
+        var ids = oldIds.ToList();
         ids.Add(label.Id);
-        await TicketService.SetTicketLabelsAsync(Slug, _selectedTicket.Id, ids);
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        await TicketService.SetTicketLabelsAsync(Slug, ticketId, ids);
+        PushUndo($"Label +{label.Name} #{ticketId}", async () =>
+            await TicketService.SetTicketLabelsAsync(Slug, ticketId, oldIds));
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _labelSearch = "";
         _labelDropdownOpen = false;
@@ -1416,9 +1516,13 @@ else
     private async Task RemoveLabel(int labelId)
     {
         if (_selectedTicket is null) return;
-        var ids = _selectedTicket.Labels.Select(l => l.Id).Where(id => id != labelId).ToList();
-        await TicketService.SetTicketLabelsAsync(Slug, _selectedTicket.Id, ids);
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        var oldIds = _selectedTicket.Labels.Select(l => l.Id).ToList();
+        var ticketId = _selectedTicket.Id;
+        var ids = oldIds.Where(id => id != labelId).ToList();
+        await TicketService.SetTicketLabelsAsync(Slug, ticketId, ids);
+        PushUndo($"Label #{ticketId}", async () =>
+            await TicketService.SetTicketLabelsAsync(Slug, ticketId, oldIds));
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
     }
 
@@ -1517,8 +1621,12 @@ else
     private async Task SetAssignee(string slug)
     {
         if (_selectedTicket is null) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: slug);
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        var oldAssignee = _selectedTicket.AssignedTo ?? "";
+        var ticketId = _selectedTicket.Id;
+        await TicketService.UpdateTicketAsync(Slug, ticketId, assignedTo: slug);
+        PushUndo($"Assigner #{ticketId}", async () =>
+            await TicketService.UpdateTicketAsync(Slug, ticketId, assignedTo: oldAssignee));
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
         _assigneeSearch = "";
         _assigneeDropdownOpen = false;
@@ -1527,8 +1635,12 @@ else
     private async Task RemoveAssignee()
     {
         if (_selectedTicket is null) return;
-        await TicketService.UpdateTicketAsync(Slug, _selectedTicket.Id, assignedTo: "");
-        _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
+        var oldAssignee = _selectedTicket.AssignedTo ?? "";
+        var ticketId = _selectedTicket.Id;
+        await TicketService.UpdateTicketAsync(Slug, ticketId, assignedTo: "");
+        PushUndo($"Désassigner #{ticketId}", async () =>
+            await TicketService.UpdateTicketAsync(Slug, ticketId, assignedTo: oldAssignee));
+        _selectedTicket = await TicketService.GetTicketAsync(Slug, ticketId);
         _tickets = await TicketService.ListTicketsAsync(Slug);
     }
 

@@ -1,6 +1,23 @@
 window.getLocalStorage = (key) => localStorage.getItem(key);
 window.setLocalStorage = (key, value) => localStorage.setItem(key, value);
 
+window.registerUndoShortcut = function (dotNetRef) {
+    const handler = function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            const tag = document.activeElement?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+            e.preventDefault();
+            dotNetRef.invokeMethodAsync('OnCtrlZ');
+        }
+    };
+    document.addEventListener('keydown', handler);
+    return handler;
+};
+
+window.unregisterUndoShortcut = function (handler) {
+    if (handler) document.removeEventListener('keydown', handler);
+};
+
 window.attachImagePaste = function (textarea, uploadUrl) {
     if (!textarea || textarea._imagePasteAttached) return;
     textarea._imagePasteAttached = true;
