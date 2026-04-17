@@ -11,6 +11,9 @@ var dataDir = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
     "TodoApp"
 );
+var appSettings = new Todo.Core.Services.AppSettingsService(dataDir);
+builder.Services.AddSingleton(appSettings);
+builder.Services.AddSingleton(new Todo.Core.Services.LocalizationService(appSettings));
 builder.Services.AddSingleton(new ProjectService(dataDir));
 builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<LabelService>();
