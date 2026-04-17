@@ -11,6 +11,7 @@ public sealed class AutomationEngine : BackgroundService
     private readonly ProjectService _projects;
     private readonly TicketService _tickets;
     private readonly MemberService _members;
+    private readonly LabelService _labels;
     private readonly AutomationStore _store;
     private readonly SessionRegistry _sessions;
     private readonly AgentRunRegistry _runs;
@@ -24,6 +25,7 @@ public sealed class AutomationEngine : BackgroundService
         ProjectService projects,
         TicketService tickets,
         MemberService members,
+        LabelService labels,
         AutomationStore store,
         SessionRegistry sessions,
         AgentRunRegistry runs,
@@ -34,6 +36,7 @@ public sealed class AutomationEngine : BackgroundService
         _projects = projects;
         _tickets = tickets;
         _members = members;
+        _labels = labels;
         _store = store;
         _sessions = sessions;
         _runs = runs;
@@ -147,36 +150,72 @@ public sealed class AutomationEngine : BackgroundService
     {
         foreach (var cond in automation.Conditions)
         {
-            switch (cond)
-            {
-                case TicketInColumnConditionSpec c:
-                    if (firing.TicketStatus is null) return false;
-                    if (c.Columns.Count > 0 && !c.Columns.Contains(firing.TicketStatus)) return false;
-                    break;
-                case NoPendingTicketsConditionSpec c:
-                    var cols = c.Columns ?? new List<string> { "Todo", "InProgress" };
-                    foreach (var col in cols)
-                    {
-                        var list = await _tickets.ListTicketsAsync(rt.Slug, statusFilter: col);
-                        if (c.AssigneeSlug is null)
-                        {
-                            if (list.Count > 0) return false;
-                        }
-                        else
-                        {
-                            if (list.Any(t => t.AssignedTo == c.AssigneeSlug)) return false;
-                        }
-                    }
-                    break;
-                case MinDescriptionLengthConditionSpec c:
-                    // Requires full ticket fetch; skip if no ticket id in firing.
-                    if (firing.TicketId is null) break;
-                    var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                    if (ticket is null || ticket.Description.Length < c.Length) return false;
-                    break;
-            }
+            var result = await EvaluateSingleConditionAsync(rt, cond, firing);
+            if (cond.Negate) result = !result;
+            if (!result) return false;
         }
         return true;
+    }
+
+    private async Task<bool> EvaluateSingleConditionAsync(ProjectRuntime rt, ConditionSpec cond, TriggerFiring firing)
+    {
+        switch (cond)
+        {
+            case TicketInColumnConditionSpec c:
+                if (firing.TicketStatus is null) return false;
+                return c.Columns.Count == 0 || c.Columns.Contains(firing.TicketStatus);
+            case NoPendingTicketsConditionSpec c:
+                var cols = c.Columns ?? new List<string> { "Todo", "InProgress" };
+                foreach (var col in cols)
+                {
+                    var list = await _tickets.ListTicketsAsync(rt.Slug, statusFilter: col);
+                    if (c.AssigneeSlug is null)
+                    {
+                        if (list.Count > 0) return false;
+                    }
+                    else
+                    {
+                        if (list.Any(t => t.AssignedTo == c.AssigneeSlug)) return false;
+                    }
+                }
+                return true;
+            case MinDescriptionLengthConditionSpec c:
+                if (firing.TicketId is null) return true;
+                var ticketMdl = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                return ticketMdl is not null && ticketMdl.Description.Length >= c.Length;
+            case FieldLengthConditionSpec fl:
+                if (firing.TicketId is null) return true;
+                var ticketFl = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticketFl is null) return false;
+                var fieldValue = fl.Field == "title" ? ticketFl.Title : ticketFl.Description;
+                return fl.Mode == "max" ? fieldValue.Length <= fl.Length : fieldValue.Length >= fl.Length;
+            case PriorityConditionSpec pc:
+                if (firing.TicketId is null) return true;
+                var ticketPc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticketPc is null) return false;
+                return pc.Priorities.Count == 0 || pc.Priorities.Contains(ticketPc.Priority.ToString());
+            case LabelsConditionSpec lc:
+                if (firing.TicketId is null) return true;
+                var ticketLc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticketLc is null) return false;
+                return lc.Labels.Count == 0 || ticketLc.Labels.Any(l => lc.Labels.Contains(l.Name));
+            case AssignedToConditionSpec ac:
+                if (firing.TicketId is null) return true;
+                var ticketAc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticketAc is null) return false;
+                return ac.Slugs.Count == 0
+                    ? ticketAc.AssignedTo is null
+                    : ac.Slugs.Contains(ticketAc.AssignedTo ?? "");
+            case TicketAgeConditionSpec ta:
+                if (firing.TicketId is null) return true;
+                var ticketTa = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticketTa is null) return false;
+                var dateField = ta.Field == "updatedAt" ? ticketTa.UpdatedAt : ticketTa.CreatedAt;
+                var age = DateTime.UtcNow - dateField;
+                return ta.Mode == "newerThan" ? age.TotalHours < ta.Hours : age.TotalHours >= ta.Hours;
+            default:
+                return true;
+        }
     }
 
     private async Task<AgentRun?> ExecuteAutomationAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, CancellationToken ct)
@@ -249,6 +288,68 @@ public sealed class AutomationEngine : BackgroundService
                     catch { }
                     break;
                 }
+                case SetLabelsActionSpec s when firing.TicketId is not null:
+                {
+                    try
+                    {
+                        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                        if (ticket is null) break;
+                        var currentNames = ticket.Labels.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        foreach (var name in s.Add) currentNames.Add(name);
+                        foreach (var name in s.Remove) currentNames.Remove(name);
+                        var allLabels = await _labels.ListLabelsAsync(rt.Slug);
+                        var newIds = allLabels.Where(l => currentNames.Contains(l.Name)).Select(l => l.Id).ToList();
+                        await _tickets.SetTicketLabelsAsync(rt.Slug, firing.TicketId.Value, newIds);
+                    }
+                    catch { }
+                    break;
+                }
+                case AddCommentActionSpec ac when firing.TicketId is not null:
+                {
+                    try
+                    {
+                        var content = ac.Content
+                            .Replace("{ticketId}", firing.TicketId?.ToString() ?? "")
+                            .Replace("{ticketTitle}", firing.TicketTitle ?? "");
+                        if (content.Contains("{assignee}"))
+                        {
+                            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
+                            content = content.Replace("{assignee}", ticket?.AssignedTo ?? "");
+                        }
+                        await _tickets.AddCommentAsync(rt.Slug, firing.TicketId.Value, content, ac.Author);
+                    }
+                    catch { }
+                    break;
+                }
+                case AssignTicketActionSpec at when firing.TicketId is not null:
+                {
+                    try
+                    {
+                        var slug = at.Slug;
+                        if (slug is not null && slug.Contains("{previousAssignee}"))
+                        {
+                            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                            slug = slug.Replace("{previousAssignee}", ticket?.AssignedTo ?? "");
+                        }
+                        if (string.IsNullOrEmpty(slug))
+                        {
+                            // unassign
+                            await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId.Value, assignedTo: "", author: "automation");
+                        }
+                        else
+                        {
+                            var members = await _members.ListMembersAsync(rt.Slug);
+                            if (!members.Any(m => string.Equals(m.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                _logger.LogWarning("assignTicket: member '{Slug}' not found in project {Project}", slug, rt.Slug);
+                                break;
+                            }
+                            await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId.Value, assignedTo: slug, author: "automation");
+                        }
+                    }
+                    catch { }
+                    break;
+                }
             }
         }
         return lastRun;
@@ -271,6 +372,7 @@ public sealed class AutomationEngine : BackgroundService
                 SubTicketStatusTriggerSpec s => new SubTicketStatusTrigger(s),
                 BoardIdleTriggerSpec s => new BoardIdleTrigger(s),
                 AgentInactivityTriggerSpec s => new AgentInactivityTrigger(s),
+                TicketCommentAddedTriggerSpec s => new TicketCommentAddedTrigger(s),
                 _ => new NullTrigger(),
             };
         }
