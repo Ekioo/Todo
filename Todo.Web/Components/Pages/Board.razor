@@ -141,7 +141,6 @@ else
                                  @onclick="() => SelectTicket(ticket)">
                                 <div class="ticket-card-top">
                                     <span class="priority-dot priority-@GetPriorityClass(ticket.Priority)" title="@GetPriorityLabel(ticket.Priority)"></span>
-                                    <span class="ticket-id">#@ticket.Id</span>
                                     @{
                                         var activeRun = AgentRuns.ActiveForTicket(Slug, ticket.Id);
                                         var lastRun = activeRun is null ? AgentRuns.LastForTicket(Slug, ticket.Id) : null;
@@ -160,6 +159,7 @@ else
                                                 @onclick="() => OpenRunDrawer(lastRun.RunId)"
                                                 @onclick:stopPropagation>log</button>
                                     }
+                                    <span class="ticket-id">#@ticket.Id</span>
                                 </div>
                                 <span class="ticket-title">@ticket.Title</span>
                                 @if (ticket.Labels.Count > 0)
