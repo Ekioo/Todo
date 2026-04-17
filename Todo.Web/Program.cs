@@ -22,7 +22,8 @@ builder.Services.AddSingleton<Todo.Web.Services.BoardUpdateNotifier>();
 // Automation engine
 builder.Services.AddSingleton<AutomationStore>();
 builder.Services.AddSingleton<SessionRegistry>();
-builder.Services.AddSingleton<AgentRunRegistry>();
+builder.Services.AddSingleton(new RunLogStore(dataDir));
+builder.Services.AddSingleton<AgentRunRegistry>(sp => new AgentRunRegistry(sp.GetRequiredService<RunLogStore>()));
 builder.Services.AddSingleton<ClaudeRunner>();
 builder.Services.AddSingleton<CostTracker>();
 builder.Services.AddSingleton<AutomationEngine>();
