@@ -39,21 +39,30 @@ public sealed class SessionRegistry
         }
     }
 
-    public string? GetSessionId(string workspacePath, string agent, int ticketId)
+    public string? GetSessionId(string workspacePath, string agent, int? ticketId)
     {
+        var key = SessionKey(agent, ticketId);
         var s = Load(workspacePath);
         var sessions = s["_sessions"] as JsonObject;
-        return sessions?[$"{agent}:{ticketId}"]?.GetValue<string>();
+        return sessions?[key]?.GetValue<string>();
     }
 
-    public void SetSessionId(string workspacePath, string agent, int ticketId, string sessionId)
+    public void SetSessionId(string workspacePath, string agent, int? ticketId, string sessionId)
     {
+        var key = SessionKey(agent, ticketId);
         var s = Load(workspacePath);
         var sessions = s["_sessions"] as JsonObject ?? new JsonObject();
-        sessions[$"{agent}:{ticketId}"] = sessionId;
+        sessions[key] = sessionId;
         s["_sessions"] = sessions;
         Save(workspacePath, s);
     }
+
+    /// <summary>
+    /// Session key identical to the legacy dispatcher.mjs: `{agent}:{ticketId}` when
+    /// bound to a ticket, or `{agent}:sweep` for global/stateless agents like groomer.
+    /// </summary>
+    private static string SessionKey(string agent, int? ticketId) =>
+        $"{agent}:{(ticketId?.ToString() ?? "sweep")}";
 
     public string? LastProcessedCommit(string workspacePath) =>
         Load(workspacePath)["_lastProcessedCommit"]?.GetValue<string>();

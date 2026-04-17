@@ -59,16 +59,14 @@ public sealed class ClaudeRunner
             return run;
         }
 
-        var sessionKey = $"{ctx.AgentName}:{(ctx.TicketId?.ToString() ?? "sweep")}";
-        var existingSessionId = ctx.TicketId is null
-            ? null
-            : _sessions.GetSessionId(ctx.WorkspacePath, ctx.AgentName, ctx.TicketId.Value);
+        // Session key matches the legacy dispatcher.mjs format ({agent}:{ticketId|sweep}).
+        // We persist sessions for ALL runs — even those without a ticket (groomer,
+        // documentalist, code-janitor, evaluator) — so they keep their context across restarts.
+        var existingSessionId = _sessions.GetSessionId(ctx.WorkspacePath, ctx.AgentName, ctx.TicketId);
         var sessionId = existingSessionId ?? Guid.NewGuid().ToString();
         var isResume = existingSessionId is not null;
         run.SessionId = sessionId;
-
-        if (ctx.TicketId is not null)
-            _sessions.SetSessionId(ctx.WorkspacePath, ctx.AgentName, ctx.TicketId.Value, sessionId);
+        _sessions.SetSessionId(ctx.WorkspacePath, ctx.AgentName, ctx.TicketId, sessionId);
 
         var skillContent = await File.ReadAllTextAsync(skillAbs, ct);
         var prompt = BuildPrompt(ctx, skillContent, isResume);
@@ -100,6 +98,10 @@ public sealed class ClaudeRunner
         psi.Environment["CLAUDE_AGENT"] = ctx.AgentName;
         foreach (var kv in ctx.Env) psi.Environment[kv.Key] = kv.Value;
 
+        AppendDebugLog(ctx, $"LAUNCHING {ctx.AgentName} {(isResume ? "(resume)" : "(new)")} ticket=#{ctx.TicketId} session={sessionId}");
+        _logger.LogInformation("LAUNCH {Agent} {Mode} ticket=#{TicketId} session={SessionId} cmd=claude {Args}",
+            ctx.AgentName, isResume ? "(resume)" : "(new)", ctx.TicketId, sessionId, string.Join(" ", args));
+
         Process proc;
         try
         {
@@ -113,7 +115,7 @@ public sealed class ClaudeRunner
         }
 
         run.Push(new StreamEvent(DateTime.UtcNow, "launch",
-            $"{ctx.AgentName} {(isResume ? "(resume)" : "(new)")} cwd={ctx.WorkspacePath} skill={ctx.SkillFile}"));
+            $"{ctx.AgentName} {(isResume ? "(resume)" : "(new)")} session={sessionId[..8]} cwd={ctx.WorkspacePath} skill={ctx.SkillFile}"));
 
         try
         {
