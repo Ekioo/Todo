@@ -89,7 +89,7 @@ public sealed class AutomationEngine : BackgroundService
             {
                 _logger.LogError(ex, "AutomationEngine tick failed");
             }
-            _runs.PurgeOld(TimeSpan.FromMinutes(5));
+            _runs.PurgeOld(TimeSpan.FromHours(24));
             try { await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken); }
             catch (OperationCanceledException) { break; }
         }
@@ -243,6 +243,8 @@ public sealed class AutomationEngine : BackgroundService
                 }
                 case MoveTicketStatusActionSpec m when firing.TicketId is not null:
                 {
+                    if (string.Equals(firing.TicketStatus, m.To, StringComparison.OrdinalIgnoreCase))
+                        break; // already in target status
                     try { await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, m.To, "automation"); }
                     catch { }
                     break;

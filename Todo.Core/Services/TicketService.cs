@@ -198,6 +198,8 @@ public class TicketService
         var ticket = await db.Tickets.FindAsync(ticketId);
         if (ticket is null) return null;
         var oldStatus = ticket.Status;
+        if (string.Equals(oldStatus, newStatus, StringComparison.OrdinalIgnoreCase))
+            return ticket; // already in target status — no-op
         ticket.Status = newStatus;
         ticket.UpdatedAt = DateTime.UtcNow;
         db.ActivityEntries.Add(new ActivityEntry

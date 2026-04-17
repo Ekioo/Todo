@@ -23,5 +23,14 @@ public sealed class AgentRunsState
     public AgentRun? ActiveForTicket(string slug, int ticketId) =>
         _registry.ActiveForTicket(slug, ticketId).FirstOrDefault();
 
+    /// <summary>
+    /// Most recent run for a ticket (any status — used to offer a "log" button
+    /// after a run has completed so the user can inspect what happened).
+    /// </summary>
+    public AgentRun? LastForTicket(string slug, int ticketId) =>
+        _registry.AllForTicket(slug, ticketId)
+            .OrderByDescending(r => r.EndedAt ?? r.StartedAt)
+            .FirstOrDefault();
+
     public AgentRun? Get(string runId) => _registry.Get(runId);
 }

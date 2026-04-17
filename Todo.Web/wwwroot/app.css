@@ -1821,6 +1821,30 @@ button:disabled { opacity: 0.35; cursor: default; }
 .agent-spinner:hover { border-top-color: #60afff; filter: drop-shadow(0 0 3px #4a9eff88); }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 
+/* Small "log" button shown on a ticket that has a completed (non-active) run. */
+.agent-log-btn {
+    margin-left: auto;
+    background: #1a1f2c;
+    border: 1px solid var(--border, #333);
+    border-radius: 4px;
+    color: var(--muted, #8a99b0);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 0.1rem 0.35rem;
+    cursor: pointer;
+    line-height: 1;
+    height: 16px;
+}
+.agent-log-btn:hover { color: #c8d0e0; border-color: #4a9eff; }
+.agent-log-completed { color: #3ecf8e; border-color: #3ecf8e44; }
+.agent-log-completed:hover { color: #5edfa0; border-color: #3ecf8e; }
+.agent-log-failed    { color: #f06b6b; border-color: #f06b6b44; }
+.agent-log-failed:hover { color: #ff8080; border-color: #f06b6b; }
+.agent-log-stopped   { color: #f59e42; border-color: #f59e4244; }
+.agent-log-stopped:hover { color: #ffb060; border-color: #f59e42; }
+
 /* ─── Agent run drawer ─────────────────────────────────────────────────── */
 .agent-drawer-overlay {
     position: fixed; inset: 0;
