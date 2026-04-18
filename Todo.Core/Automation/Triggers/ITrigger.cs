@@ -13,6 +13,15 @@ public interface ITrigger
     /// Return one entry per dispatch that should happen this tick.
     /// </summary>
     Task<IReadOnlyList<TriggerFiring>> EvaluateAsync(TriggerContext ctx, CancellationToken ct);
+
+    /// <summary>
+    /// Called by the engine once the firing has been successfully dispatched
+    /// (gate checks like concurrency/dedup/budget passed). Triggers that keep
+    /// persistent "seen" state (snapshot, debounce) should persist it here so
+    /// that a firing skipped by a transient gate is retried next poll instead
+    /// of being silently dropped.
+    /// </summary>
+    Task CommitFiringAsync(TriggerContext ctx, TriggerFiring firing) => Task.CompletedTask;
 }
 
 public sealed class TriggerContext

@@ -134,7 +134,7 @@ public sealed class AutomationEngine : BackgroundService
                 foreach (var firing in firings)
                 {
                     if (!await ConditionsMatchAsync(rt, automation, firing)) continue;
-                    _ = ExecuteAutomationAsync(rt, automation, firing, ct);
+                    _ = ExecuteAutomationAsync(rt, automation, firing, ct, trigger, tctx);
                 }
             }
         }
@@ -218,9 +218,17 @@ public sealed class AutomationEngine : BackgroundService
         }
     }
 
-    private async Task<AgentRun?> ExecuteAutomationAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, CancellationToken ct)
+    private async Task<AgentRun?> ExecuteAutomationAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, CancellationToken ct, ITrigger? trigger = null, TriggerContext? tctx = null)
     {
         AgentRun? lastRun = null;
+        bool committed = false;
+        async Task CommitAsync()
+        {
+            if (committed || trigger is null || tctx is null) return;
+            committed = true;
+            try { await trigger.CommitFiringAsync(tctx, firing); }
+            catch (Exception ex) { _logger.LogWarning(ex, "CommitFiring failed for {Id}", automation.Id); }
+        }
         foreach (var action in automation.Actions)
         {
             switch (action)
@@ -260,6 +268,9 @@ public sealed class AutomationEngine : BackgroundService
 
                     // Mutually exclusive groups must be idle.
                     if (a.MutuallyExclusiveWith.Count > 0 && _runs.HasActiveAny(rt.Slug, a.MutuallyExclusiveWith)) return null;
+
+                    // All transient gates passed — let the trigger persist its "seen" marker.
+                    await CommitAsync();
 
                     var runCtx = new ClaudeRunContext
                     {
@@ -352,6 +363,10 @@ public sealed class AutomationEngine : BackgroundService
                 }
             }
         }
+        // No runClaudeSkill gate was hit (automation made of move/comment/label/assign only, or the
+        // runClaudeSkill action was skipped due to a non-transient reason). Commit now to avoid
+        // re-firing every poll.
+        await CommitAsync();
         return lastRun;
     }
 

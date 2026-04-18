@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Todo.Core.Models;
 
 namespace Todo.Core.Automation.Triggers;
 
@@ -7,6 +8,9 @@ namespace Todo.Core.Automation.Triggers;
 /// compared to the previously recorded one. Reproduces Lain's
 /// `producer.lastSubStatuses` gating to avoid re-dispatching the producer while
 /// nothing actionable has changed in the sub-tree.
+///
+/// The CSV marker is only persisted after the engine confirms the dispatch via
+/// <see cref="CommitFiringAsync"/> — firings skipped by transient gates are retried.
 /// </summary>
 public sealed class SubTicketStatusTrigger : ITrigger
 {
@@ -25,7 +29,7 @@ public sealed class SubTicketStatusTrigger : ITrigger
             statusFilter: _spec.ParentColumn);
 
         var state = ctx.Sessions.Load(ctx.WorkspacePath);
-        var agentKey = ctx.Automation.Id; // per-automation bucket
+        var agentKey = ctx.Automation.Id;
         var bucket = state[agentKey] as JsonObject ?? new JsonObject();
         var lastSubs = bucket["lastSubStatuses"] as JsonObject ?? new JsonObject();
 
@@ -33,13 +37,11 @@ public sealed class SubTicketStatusTrigger : ITrigger
         foreach (var parent in parents)
         {
             if (parent.SubTickets.Count == 0) continue;
-            var csv = string.Join(",", parent.SubTickets
-                .OrderBy(s => s.Id)
-                .Select(s => $"{s.Id}:{s.Status}"));
+
+            var csv = ComputeCsv(parent.SubTickets);
             var prev = lastSubs[parent.Id.ToString()]?.GetValue<string>();
             if (prev == csv) continue;
 
-            // Debounce check
             if (_spec.DebounceSeconds is not null)
             {
                 var lastAt = ctx.Sessions.LastDispatched(ctx.WorkspacePath, agentKey);
@@ -47,16 +49,29 @@ public sealed class SubTicketStatusTrigger : ITrigger
                     continue;
             }
 
-            lastSubs[parent.Id.ToString()] = csv;
             firings.Add(new TriggerFiring(parent.Id, parent.Title, parent.Status));
         }
 
-        if (firings.Count > 0)
-        {
-            bucket["lastSubStatuses"] = lastSubs;
-            state[agentKey] = bucket;
-            ctx.Sessions.Save(ctx.WorkspacePath, state);
-        }
         return firings;
     }
+
+    public async Task CommitFiringAsync(TriggerContext ctx, TriggerFiring firing)
+    {
+        if (firing.TicketId is not int tid) return;
+        var ticket = await ctx.Tickets.GetTicketAsync(ctx.ProjectSlug, tid);
+        if (ticket is null) return;
+        var csv = ComputeCsv(ticket.SubTickets);
+
+        var state = ctx.Sessions.Load(ctx.WorkspacePath);
+        var agentKey = ctx.Automation.Id;
+        var bucket = state[agentKey] as JsonObject;
+        if (bucket is null) { bucket = new JsonObject(); state[agentKey] = bucket; }
+        var lastSubs = bucket["lastSubStatuses"] as JsonObject;
+        if (lastSubs is null) { lastSubs = new JsonObject(); bucket["lastSubStatuses"] = lastSubs; }
+        lastSubs[tid.ToString()] = csv;
+        ctx.Sessions.Save(ctx.WorkspacePath, state);
+    }
+
+    private static string ComputeCsv(IEnumerable<SubTicketInfo> subs) =>
+        string.Join(",", subs.OrderBy(s => s.Id).Select(s => $"{s.Id}:{s.Status}"));
 }
