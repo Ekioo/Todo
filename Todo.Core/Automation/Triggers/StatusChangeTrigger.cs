@@ -1,5 +1,8 @@
 namespace Todo.Core.Automation.Triggers;
 
+/// <summary>Signal emitted by TicketService when a ticket's status changes.</summary>
+public sealed record StatusChangeSignal(int TicketId, string From, string To);
+
 /// <summary>
 /// Fires when a ticket's status changes, optionally filtered by from/to columns.
 /// Uses a persisted snapshot (dispatch-state.json:_ticketSnapshot) to detect changes
@@ -52,6 +55,28 @@ public sealed class StatusChangeTrigger : ITrigger
 
         ctx.Sessions.SaveTicketSnapshot(ctx.WorkspacePath, newSnapshot);
         return firings;
+    }
+
+    public bool TryHandleExternalSignal(object signal, out IReadOnlyList<TriggerFiring> firings)
+    {
+        if (signal is not StatusChangeSignal s)
+        {
+            firings = Array.Empty<TriggerFiring>();
+            return false;
+        }
+
+        var matches = (_spec.From is null || s.From == _spec.From)
+                   && (_spec.To   is null || s.To   == _spec.To);
+
+        if (!matches)
+        {
+            firings = Array.Empty<TriggerFiring>();
+            return false;
+        }
+
+        // Keep snapshot at old value so the poll retries if commit is skipped.
+        firings = [new TriggerFiring(s.TicketId, null, s.To)];
+        return true;
     }
 
     public Task CommitFiringAsync(TriggerContext ctx, TriggerFiring firing)

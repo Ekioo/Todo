@@ -9,6 +9,18 @@ public class TicketService
     private readonly ProjectService _projectService;
     private readonly MemberService _memberService;
 
+    /// <summary>
+    /// Raised after a ticket's status has been persisted.
+    /// Parameters: (projectSlug, ticketId, fromStatus, toStatus)
+    /// </summary>
+    public event Action<string, int, string, string>? TicketStatusChanged;
+
+    /// <summary>
+    /// Raised immediately after a comment is persisted.
+    /// Parameters: (projectSlug, ticketId, author, content)
+    /// </summary>
+    public event Action<string, int, string, string>? TicketCommentAdded;
+
     public TicketService(ProjectService projectService, MemberService memberService)
     {
         _projectService = projectService;
@@ -209,6 +221,7 @@ public class TicketService
             Text = $"a déplacé le ticket : {oldStatus} → {newStatus}"
         });
         await db.SaveChangesAsync();
+        TicketStatusChanged?.Invoke(projectSlug, ticketId, oldStatus, newStatus);
         return ticket;
     }
 
@@ -352,6 +365,7 @@ public class TicketService
         db.Comments.Add(comment);
         ticket.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        TicketCommentAdded?.Invoke(projectSlug, ticketId, author, content);
         return comment;
     }
 

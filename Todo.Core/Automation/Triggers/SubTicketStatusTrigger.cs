@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Todo.Core.Models;
 
@@ -11,19 +12,54 @@ namespace Todo.Core.Automation.Triggers;
 ///
 /// The CSV marker is only persisted after the engine confirms the dispatch via
 /// <see cref="CommitFiringAsync"/> — firings skipped by transient gates are retried.
+///
+/// Event-driven path: <see cref="TryHandleExternalSignal"/> queues incoming
+/// <see cref="StatusChangeSignal"/> items; <see cref="EvaluateAsync"/> drains the
+/// queue on every call (bypassing the poll debounce) so changes are detected within
+/// one engine tick (&lt;1 s) rather than waiting for the next full poll cycle.
 /// </summary>
 public sealed class SubTicketStatusTrigger : ITrigger
 {
     private DateTime _lastPolled = DateTime.MinValue;
     private readonly SubTicketStatusTriggerSpec _spec;
 
+    // Child ticket IDs whose status just changed — queued by TryHandleExternalSignal,
+    // drained synchronously inside EvaluateAsync.
+    private readonly ConcurrentQueue<int> _pendingChildIds = new();
+
     public SubTicketStatusTrigger(SubTicketStatusTriggerSpec spec) { _spec = spec; }
+
+    public bool TryHandleExternalSignal(object signal, out IReadOnlyList<TriggerFiring> firings)
+    {
+        firings = Array.Empty<TriggerFiring>();
+        if (signal is not StatusChangeSignal s) return false;
+
+        // Queue the child ID for processing in the next EvaluateAsync tick.
+        _pendingChildIds.Enqueue(s.TicketId);
+        // Return false: we cannot resolve the parent synchronously here.
+        // EvaluateAsync will drain the queue and produce the real firings.
+        return false;
+    }
 
     public async Task<IReadOnlyList<TriggerFiring>> EvaluateAsync(TriggerContext ctx, CancellationToken ct)
     {
-        if ((ctx.Now - _lastPolled).TotalSeconds < _spec.PollSeconds)
+        var hasPending = !_pendingChildIds.IsEmpty;
+
+        // Skip regular poll debounce only when there are pending signal-driven child IDs.
+        if (!hasPending && (ctx.Now - _lastPolled).TotalSeconds < _spec.PollSeconds)
             return Array.Empty<TriggerFiring>();
         _lastPolled = ctx.Now;
+
+        // Collect parent IDs to (re-)evaluate: signal-driven ones + all parents from full poll.
+        var parentIdsToCheck = new HashSet<int>();
+
+        // Drain queued child IDs and resolve their parents.
+        while (_pendingChildIds.TryDequeue(out var childId))
+        {
+            var child = await ctx.Tickets.GetTicketAsync(ctx.ProjectSlug, childId);
+            if (child?.ParentId is int pid)
+                parentIdsToCheck.Add(pid);
+        }
 
         var parents = await ctx.Tickets.ListTicketsAsync(ctx.ProjectSlug,
             statusFilter: _spec.ParentColumn);
@@ -33,8 +69,14 @@ public sealed class SubTicketStatusTrigger : ITrigger
         var bucket = state[agentKey] as JsonObject ?? new JsonObject();
         var lastSubs = bucket["lastSubStatuses"] as JsonObject ?? new JsonObject();
 
+        // When signal-driven: only re-evaluate the parents whose children changed.
+        // When poll-driven: evaluate all parents in the target column.
+        var parentsToEval = parentIdsToCheck.Count > 0
+            ? parents.Where(p => parentIdsToCheck.Contains(p.Id))
+            : parents;
+
         var firings = new List<TriggerFiring>();
-        foreach (var parent in parents)
+        foreach (var parent in parentsToEval)
         {
             if (parent.SubTickets.Count == 0) continue;
 

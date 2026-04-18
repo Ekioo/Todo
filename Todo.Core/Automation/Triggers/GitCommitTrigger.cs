@@ -2,6 +2,9 @@ using System.Diagnostics;
 
 namespace Todo.Core.Automation.Triggers;
 
+/// <summary>Signal emitted by GitRepositoryWatcher when new commits are detected via FileSystemWatcher.</summary>
+public sealed record GitCommitSignal(string Slug);
+
 /// <summary>
 /// Fires once per new git commit observed since last evaluation.
 /// Uses SessionRegistry's _lastProcessedCommit to persist state across restarts,
@@ -60,6 +63,21 @@ public sealed class GitCommitTrigger : ITrigger
         {
             return Task.FromResult<IReadOnlyList<TriggerFiring>>(Array.Empty<TriggerFiring>());
         }
+    }
+
+    public bool TryHandleExternalSignal(object signal, out IReadOnlyList<TriggerFiring> firings)
+    {
+        if (signal is not GitCommitSignal)
+        {
+            firings = Array.Empty<TriggerFiring>();
+            return false;
+        }
+        // Reset the poll debounce so EvaluateAsync runs immediately on the next engine tick.
+        _lastPolled = DateTime.MinValue;
+        firings = Array.Empty<TriggerFiring>();
+        // Return false: the actual commit enumeration happens in EvaluateAsync which will
+        // run immediately (debounce reset) and produce the real per-commit firings.
+        return false;
     }
 
     private static string? RunGit(string cwd, string args)

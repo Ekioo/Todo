@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Todo.Core.Automation.Triggers;
@@ -20,6 +21,12 @@ public sealed class AutomationEngine : BackgroundService
     private readonly ILogger<AutomationEngine> _logger;
 
     private readonly ConcurrentDictionary<string, ProjectRuntime> _runtime = new();
+
+    // Urgent firings produced by NotifySignal — consumed before the regular poll each tick.
+    private readonly Channel<UrgentEntry> _urgentChannel =
+        Channel.CreateUnbounded<UrgentEntry>(new UnboundedChannelOptions { SingleReader = true });
+
+    private sealed record UrgentEntry(string Slug, Automation Automation, ITrigger Trigger, TriggerFiring Firing);
 
     public AutomationEngine(
         ProjectService projects,
@@ -48,6 +55,12 @@ public sealed class AutomationEngine : BackgroundService
         {
             if (_runtime.TryGetValue(slug, out var rt)) rt.ConfigDirty = true;
         };
+
+        _tickets.TicketStatusChanged += (slug, ticketId, from, to) =>
+            _ = NotifySignalAsync(slug, new Triggers.StatusChangeSignal(ticketId, from, to));
+
+        _tickets.TicketCommentAdded += (slug, ticketId, author, content) =>
+            _ = NotifySignalAsync(slug, new Triggers.CommentAddedSignal(ticketId, author, content));
     }
 
     public async Task ReloadProjectAsync(string slug)
@@ -79,6 +92,26 @@ public sealed class AutomationEngine : BackgroundService
         return run ?? throw new InvalidOperationException("Aucun run créé (concurrence ou action invalide).");
     }
 
+    /// <summary>
+    /// Push an external signal to all enabled automations of <paramref name="projectSlug"/>.
+    /// Each trigger that implements <see cref="ITrigger.TryHandleExternalSignal"/> can produce
+    /// firings that are enqueued and dispatched at the beginning of the very next tick (&lt;1 s).
+    /// </summary>
+    public async Task NotifySignalAsync(string projectSlug, object signal)
+    {
+        await EnsureLoadedAsync(projectSlug);
+        if (!_runtime.TryGetValue(projectSlug, out var rt) || rt.Config is null) return;
+
+        foreach (var automation in rt.Config.Automations)
+        {
+            if (!automation.Enabled) continue;
+            if (!rt.Triggers.TryGetValue(automation.Id, out var trigger)) continue;
+            if (!trigger.TryHandleExternalSignal(signal, out var firings)) continue;
+            foreach (var firing in firings)
+                _urgentChannel.Writer.TryWrite(new UrgentEntry(projectSlug, automation, trigger, firing));
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("AutomationEngine started");
@@ -100,6 +133,27 @@ public sealed class AutomationEngine : BackgroundService
 
     private async Task TickAsync(CancellationToken ct)
     {
+        // Drain urgent firings first (produced by NotifySignal) before the regular poll.
+        while (_urgentChannel.Reader.TryRead(out var entry))
+        {
+            if (ct.IsCancellationRequested) return;
+            await EnsureLoadedAsync(entry.Slug);
+            if (!_runtime.TryGetValue(entry.Slug, out var urt) || urt.Config is null) continue;
+            if (!await ConditionsMatchAsync(urt, entry.Automation, entry.Firing)) continue;
+            var utctx = new TriggerContext
+            {
+                ProjectSlug = entry.Slug,
+                WorkspacePath = urt.Workspace!,
+                Automation = entry.Automation,
+                Tickets = _tickets,
+                Members = _members,
+                Sessions = _sessions,
+                Runs = _runs,
+                Now = DateTime.UtcNow,
+            };
+            _ = ExecuteAutomationAsync(urt, entry.Automation, entry.Firing, ct, entry.Trigger, utctx);
+        }
+
         var projects = await _projects.ListProjectsAsync();
         foreach (var project in projects)
         {

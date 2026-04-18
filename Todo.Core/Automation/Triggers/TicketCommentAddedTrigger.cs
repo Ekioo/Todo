@@ -2,6 +2,9 @@ using System.Text.Json.Nodes;
 
 namespace Todo.Core.Automation.Triggers;
 
+/// <summary>Signal emitted by TicketService when a comment is added to a ticket.</summary>
+public sealed record CommentAddedSignal(int TicketId, string Author, string Content);
+
 /// <summary>
 /// Fires when a new comment is added to any ticket, optionally filtered by author.
 /// Persists the last-seen comment ID per ticket in dispatch-state.json under
@@ -62,6 +65,27 @@ public sealed class TicketCommentAddedTrigger : ITrigger
             if (int.TryParse(kv.Key, out var ticketId) && kv.Value is not null)
                 dict[ticketId] = kv.Value.GetValue<int>();
         return dict;
+    }
+
+    public bool TryHandleExternalSignal(object signal, out IReadOnlyList<TriggerFiring> firings)
+    {
+        if (signal is not CommentAddedSignal s)
+        {
+            firings = Array.Empty<TriggerFiring>();
+            return false;
+        }
+
+        var matches = _spec.Authors.Count == 0
+                   || _spec.Authors.Contains(s.Author, StringComparer.OrdinalIgnoreCase);
+
+        if (!matches)
+        {
+            firings = Array.Empty<TriggerFiring>();
+            return false;
+        }
+
+        firings = [new TriggerFiring(s.TicketId, null, null)];
+        return true;
     }
 
     private static void SaveLastCommentIds(TriggerContext ctx, Dictionary<int, int> ids)
