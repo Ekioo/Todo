@@ -46,6 +46,9 @@ public class LocalizationService
         ["NewProjectPlaceholder"] = "Nom du nouveau projet...",
         ["DeleteProjectConfirm"] = "Supprimer le projet",
         ["DeleteProjectWarning"] = "Tous les tickets et données associés seront définitivement supprimés.",
+        ["Pause"] = "Mettre en pause",
+        ["Resume"] = "Reprendre",
+        ["Paused"] = "En pause",
 
         // ── Board ──
         ["ProjectNotFound"] = "Projet introuvable.",
@@ -364,6 +367,9 @@ public class LocalizationService
         ["NewProjectPlaceholder"] = "New project name...",
         ["DeleteProjectConfirm"] = "Delete project",
         ["DeleteProjectWarning"] = "All tickets and associated data will be permanently deleted.",
+        ["Pause"] = "Pause",
+        ["Resume"] = "Resume",
+        ["Paused"] = "Paused",
 
         // ── Board ──
         ["ProjectNotFound"] = "Project not found.",
