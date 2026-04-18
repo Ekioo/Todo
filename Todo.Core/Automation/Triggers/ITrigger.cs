@@ -22,6 +22,23 @@ public interface ITrigger
     /// of being silently dropped.
     /// </summary>
     Task CommitFiringAsync(TriggerContext ctx, TriggerFiring firing) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called by the engine when an external signal is pushed via
+    /// <c>AutomationEngine.NotifySignal</c>. Event-driven triggers can inspect
+    /// <paramref name="signal"/> and immediately produce firings without waiting
+    /// for the next poll cycle. Purely time-based triggers (Interval, BoardIdle,
+    /// AgentInactivity) can keep the default no-op implementation.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if the trigger handled the signal and produced at least one
+    /// firing; <c>false</c> to ignore (default).
+    /// </returns>
+    bool TryHandleExternalSignal(object signal, out IReadOnlyList<TriggerFiring> firings)
+    {
+        firings = Array.Empty<TriggerFiring>();
+        return false;
+    }
 }
 
 public sealed class TriggerContext
