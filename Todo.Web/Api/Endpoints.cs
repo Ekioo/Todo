@@ -75,6 +75,12 @@ public static class Endpoints
             return project is null ? Results.NotFound() : Results.Ok(project);
         }).WithTags("Projects");
 
+        api.MapPost("/projects/{slug}/pause", async (string slug, ProjectService ps) =>
+        {
+            var project = await ps.TogglePauseAsync(slug);
+            return project is null ? Results.NotFound() : Results.Ok(project);
+        }).WithTags("Projects");
+
         // Tickets
         api.MapGet("/projects/{slug}/tickets", async (string slug, string? status, TicketPriority? priority, string? assignedTo, string? createdBy, string? search, int? parentId, TicketService ts) =>
             Results.Ok(await ts.ListTicketsAsync(slug, status, priority, assignedTo, createdBy, search, parentId)))

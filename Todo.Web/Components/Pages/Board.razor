@@ -70,6 +70,11 @@ else
             </div>
         </div>
         <div class="header-right">
+            <button class="header-action-btn pause-btn @(_project.IsPaused ? "pause-btn--paused" : "")"
+                    title="@(_project.IsPaused ? L["Resume"] : L["Pause"])"
+                    @onclick="ToggleProjectPause">
+                @(_project.IsPaused ? "▶ " + L["Resume"] : "⏸ " + L["Pause"])
+            </button>
             <button class="header-action-btn undo-btn"
                     @onclick="PerformUndo"
                     disabled="@(!_undoStack.Any())"
@@ -897,6 +902,12 @@ else
     }
 
     private string? _activeRunDrawerId;
+    private async Task ToggleProjectPause()
+    {
+        var updated = await ProjectService.TogglePauseAsync(Slug);
+        if (updated is not null) { _project = updated; StateHasChanged(); }
+    }
+
     private void OpenRunDrawer(string runId) => _activeRunDrawerId = runId;
     private void CloseRunDrawer() => _activeRunDrawerId = null;
     private void OnAgentRunsChanged() => InvokeAsync(StateHasChanged);

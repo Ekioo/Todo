@@ -17,11 +17,21 @@
     {
         @foreach (var project in _projects)
         {
-            <div class="project-card-wrap">
+            <div class="project-card-wrap @(project.IsPaused ? "project-paused" : "")">
                 <a class="project-card" href="/board/@project.Slug">
-                    <h3>@project.Name</h3>
+                    <h3>
+                        @project.Name
+                        @if (project.IsPaused)
+                        {
+                            <span class="project-paused-badge">⏸ @L["Paused"]</span>
+                        }
+                    </h3>
                     <small>@project.Slug</small>
                 </a>
+                <button class="project-pause-btn" title="@(project.IsPaused ? L["Resume"] : L["Pause"])"
+                        @onclick="() => TogglePause(project)" @onclick:stopPropagation>
+                    @(project.IsPaused ? "▶" : "⏸")
+                </button>
                 <button class="project-delete-btn" title="@L["Delete"]" @onclick="() => AskDelete(project)">&times;</button>
             </div>
         }
@@ -70,6 +80,16 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await CreateProject();
+    }
+
+    private async Task TogglePause(Project project)
+    {
+        var updated = await ProjectService.TogglePauseAsync(project.Slug);
+        if (updated is not null)
+        {
+            var idx = _projects!.IndexOf(project);
+            if (idx >= 0) _projects[idx] = updated;
+        }
     }
 
     private void AskDelete(Project project) => _deleteTarget = project;

@@ -24,6 +24,8 @@ public partial class ProjectService
     {
         try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN WorkspacePath TEXT NULL"); }
         catch { /* column already exists */ }
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN IsPaused INTEGER NOT NULL DEFAULT 0"); }
+        catch { /* column already exists */ }
     }
 
     public async Task<List<Project>> ListProjectsAsync()
@@ -70,6 +72,18 @@ public partial class ProjectService
         await db.Database.EnsureCreatedAsync();
         await EnsureProjectColumnsAsync(db);
         return await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
+    }
+
+    public async Task<Project?> TogglePauseAsync(string slug)
+    {
+        await using var db = new RegistryDbContext(_registryPath);
+        await db.Database.EnsureCreatedAsync();
+        await EnsureProjectColumnsAsync(db);
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
+        if (project is null) return null;
+        project.IsPaused = !project.IsPaused;
+        await db.SaveChangesAsync();
+        return project;
     }
 
     public async Task<Project?> UpdateProjectAsync(string slug, string? workspacePath)

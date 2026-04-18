@@ -164,6 +164,40 @@ a:hover { color: var(--accent-hover); }
     background: var(--s-blocked);
     color: #fff;
 }
+.project-card-wrap .project-pause-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 1.8rem;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.project-card-wrap:hover .project-pause-btn { opacity: 1; }
+.project-card-wrap .project-pause-btn:hover { background: var(--surface2); color: var(--text); }
+.project-card-wrap.project-paused .project-card { opacity: 0.55; }
+.project-card-wrap.project-paused .project-pause-btn { opacity: 1; color: var(--accent); }
+.project-paused-badge {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    vertical-align: middle;
+    font-weight: 500;
+}
+.pause-btn { font-size: 0.82rem; }
+.pause-btn--paused { color: var(--accent) !important; }
 .project-card {
     background: var(--surface);
     border: 1px solid var(--border);
