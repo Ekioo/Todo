@@ -47,6 +47,9 @@
                     @foreach (var sk in Skills) { <option value="@sk">@sk</option> }
                 </select>
             </label>
+            <label>@L["DebounceSeconds"]
+                <input type="number" @bind="s.DebounceSeconds" />
+            </label>
             break;
 
         case GitCommitTriggerSpec s:
