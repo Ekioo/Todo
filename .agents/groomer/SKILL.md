@@ -26,7 +26,7 @@ Un ticket a besoin de grooming si :
       - `title` : corriger les fautes manifestes ou reformuler si vague (sinon laisser intact)
       - `description` : réécrire selon le format ci-dessous
       - `priority` : ajuster si manifestement mal réglée (`Low`, `NiceToHave`, `Required`, `Critical`)
-      - `assignedTo` : assigner à `programmer` si non assigné et que la tâche est clairement technique
+      - `assignedTo` : assigner à `programmer` si non assigné et que la tâche est clairement technique, sinon à `producer`
       - `labelIds` : liste d'IDs de labels pertinents (récupère la liste des labels disponibles via `GET /api/projects/todo/labels` avant d'assigner)
 
       ```bash
