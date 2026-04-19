@@ -522,9 +522,14 @@ else
         OpenEditor(_config.Automations.Count - 1);
     }
 
-    private void RemoveAutomation(int idx)
+    private async Task RemoveAutomation(int idx)
     {
-        _config?.Automations.RemoveAt(idx);
+        if (_config is null) return;
+        var name = _config.Automations[idx].Name;
+        _config.Automations.RemoveAt(idx);
+        await SaveAll();
+        if (_statusMessage?.css == "settings-status-ok")
+            _statusMessage = (string.Format(L["AutomationDeleted"], string.IsNullOrWhiteSpace(name) ? L["Unnamed"] : name), "settings-status-ok");
     }
 
     private void AddCondition()

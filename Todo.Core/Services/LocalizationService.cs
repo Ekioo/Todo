@@ -179,6 +179,7 @@ public class LocalizationService
         ["AutomationNamePlaceholder"] = "Nom de l'automation",
         ["Enabled"] = "Activé",
         ["RunLaunched"] = "Exécution de '{0}' lancée.",
+        ["AutomationDeleted"] = "Automation '{0}' supprimée.",
         ["NewAutomationName"] = "Nouvelle automation",
         ["DragToMove"] = "Glisser pour déplacer",
 
@@ -515,6 +516,7 @@ public class LocalizationService
         ["AutomationNamePlaceholder"] = "Automation name",
         ["Enabled"] = "Enabled",
         ["RunLaunched"] = "Run '{0}' launched.",
+        ["AutomationDeleted"] = "Automation '{0}' deleted.",
         ["NewAutomationName"] = "New automation",
         ["DragToMove"] = "Drag to move",
 
