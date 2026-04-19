@@ -78,7 +78,7 @@ public sealed class ClaudeRunner
         var isResume = existingSessionId is not null;
         run.SessionId = sessionId;
         _sessions.SetSessionId(ctx.WorkspacePath, ctx.AgentName, ctx.TicketId, sessionId);
-        var prompt = BuildPrompt(ctx, skillContent, isResume);
+        var prompt = await BuildPromptAsync(ctx, skillContent, isResume, ct);
         var sessionName = ctx.TicketId is not null ? $"{ctx.AgentName} #{ctx.TicketId}" : ctx.AgentName;
 
         var args = new List<string>
@@ -171,13 +171,38 @@ public sealed class ClaudeRunner
         return run;
     }
 
-    private static string BuildPrompt(ClaudeRunContext ctx, string skillContent, bool isResume)
+    private static async Task<string> BuildPromptAsync(ClaudeRunContext ctx, string skillContent, bool isResume, CancellationToken ct)
     {
         if (isResume && ctx.TicketId is not null)
             return $"The owner has posted feedback on ticket #{ctx.TicketId}: {ctx.TicketTitle}\nRead ALL owner comments on this ticket and address them.";
+
+        var prefix = await BuildPreambleAsync(ctx, ct);
+
         if (ctx.TicketId is not null)
-            return $"{skillContent}\n\nFocus on ticket #{ctx.TicketId}: {ctx.TicketTitle}";
-        return ctx.ExtraContext is null ? skillContent : $"{skillContent}\n\n{ctx.ExtraContext}";
+            return $"{prefix}{skillContent}\n\nFocus on ticket #{ctx.TicketId}: {ctx.TicketTitle}";
+        return ctx.ExtraContext is null ? $"{prefix}{skillContent}" : $"{prefix}{skillContent}\n\n{ctx.ExtraContext}";
+    }
+
+    private static async Task<string> BuildPreambleAsync(ClaudeRunContext ctx, CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+
+        var preambleFile = Path.Combine(ctx.WorkspacePath, ".agents", "preamble.md");
+        if (File.Exists(preambleFile))
+        {
+            var preamble = await File.ReadAllTextAsync(preambleFile, ct);
+            sb.AppendLine(preamble.Replace("{agent}", ctx.AgentName));
+            sb.AppendLine();
+        }
+
+        var memoryFile = Path.Combine(ctx.WorkspacePath, ".agents", ctx.AgentName, "memory.md");
+        if (File.Exists(memoryFile))
+        {
+            sb.AppendLine(await File.ReadAllTextAsync(memoryFile, ct));
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
     }
 
     private static async Task PumpStdoutAsync(Process proc, AgentRun run, CancellationToken ct)
