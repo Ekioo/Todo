@@ -1,0 +1,269 @@
+{
+  "automations": [
+    {
+      "id": "dispatch",
+      "name": "Dispatch — passer les tickets Todo en InProgress",
+      "enabled": true,
+      "trigger": {
+        "type": "ticketInColumn",
+        "seconds": 30,
+        "columns": [
+          "Todo"
+        ],
+        "debounceSeconds": 0
+      },
+      "conditions": [
+        {
+          "type": "noPendingTickets",
+          "columns": [
+            "InProgress"
+          ],
+          "sameAssignee": true,
+          "negate": false
+        }
+      ],
+      "actions": [
+        {
+          "type": "moveTicketStatus",
+          "to": "InProgress"
+        }
+      ]
+    },
+    {
+      "id": "programmer-run",
+      "name": "Programmer — lancer l'agent",
+      "enabled": true,
+      "trigger": {
+        "type": "ticketInColumn",
+        "seconds": 30,
+        "columns": [
+          "InProgress"
+        ],
+        "assigneeSlug": "programmer",
+        "debounceSeconds": 0
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "programmer",
+          "maxTurns": 200,
+          "concurrencyGroup": "programmer",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-sonnet-4-6",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "groomer",
+      "name": "Groomer — enrichir descriptions Backlog courtes",
+      "enabled": true,
+      "trigger": {
+        "type": "interval",
+        "seconds": 30
+      },
+      "conditions": [
+        {
+          "type": "fieldLength",
+          "field": "description",
+          "mode": "max",
+          "length": 100,
+          "negate": false
+        }
+      ],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "groomer",
+          "maxTurns": 100,
+          "concurrencyGroup": "groomer",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-haiku-4-5",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "committer-on-done",
+      "name": "Committer — commit quand un ticket passe à Done",
+      "enabled": true,
+      "trigger": {
+        "type": "statusChange",
+        "pollSeconds": 30,
+        "to": "Done"
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "committer",
+          "maxTurns": 50,
+          "concurrencyGroup": "committer",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-haiku-4-5",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "producer-run",
+      "name": "Producer — décomposer tickets assignés à producer",
+      "enabled": true,
+      "trigger": {
+        "type": "ticketInColumn",
+        "seconds": 30,
+        "columns": [
+          "Todo"
+        ],
+        "assigneeSlug": "producer",
+        "debounceSeconds": 0
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "producer",
+          "maxTurns": 100,
+          "concurrencyGroup": "producer",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-sonnet-4-6",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "producer-on-subtick",
+      "name": "Producer — re-dispatch quand sous-tickets changent",
+      "enabled": true,
+      "trigger": {
+        "type": "subTicketStatus",
+        "pollSeconds": 30
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "producer",
+          "maxTurns": 50,
+          "concurrencyGroup": "producer",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-sonnet-4-6",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "evaluator-on-done",
+      "name": "Evaluator — vérifier les tickets passés à Done",
+      "enabled": true,
+      "trigger": {
+        "type": "statusChange",
+        "pollSeconds": 30,
+        "to": "Done"
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "evaluator",
+          "maxTurns": 50,
+          "concurrencyGroup": "evaluator",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-sonnet-4-6",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "qa-tester-run",
+      "name": "QA Tester — valider le travail en InProgress",
+      "enabled": false,
+      "trigger": {
+        "type": "ticketInColumn",
+        "seconds": 60,
+        "columns": [
+          "InProgress"
+        ],
+        "assigneeSlug": "qa-tester",
+        "debounceSeconds": 0
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "qa-tester",
+          "maxTurns": 80,
+          "concurrencyGroup": "qa-tester",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-sonnet-4-6",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "code-janitor-nightly",
+      "name": "Code Janitor — nettoyage périodique du codebase",
+      "enabled": true,
+      "trigger": {
+        "type": "interval",
+        "seconds": 10800
+      },
+      "conditions": [],
+      "actions": [
+        {
+          "type": "runAgent",
+          "agent": "code-janitor",
+          "maxTurns": 150,
+          "concurrencyGroup": "code-janitor",
+          "mutuallyExclusiveWith": [],
+          "env": {},
+          "model": "claude-haiku-4-5",
+          "restoreStatusOnFail": true
+        }
+      ]
+    },
+    {
+      "id": "auto-review-on-all-subs-done",
+      "name": "Passer parent en Review quand tous les sous-tickets sont Done",
+      "enabled": true,
+      "trigger": {
+        "type": "subTicketStatus",
+        "pollSeconds": 30,
+        "parentColumn": "InProgress"
+      },
+      "conditions": [
+        {
+          "type": "ticketInColumn",
+          "columns": [
+            "InProgress"
+          ]
+        },
+        {
+          "type": "allSubTicketsInStatus",
+          "statuses": [
+            "Done"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "type": "moveTicketStatus",
+          "to": "Review"
+        },
+        {
+          "type": "addComment",
+          "content": "Tous les sous-tickets sont en Done. Parent deplace en Review automatiquement.",
+          "author": "system"
+        }
+      ]
+    }
+  ]
+}

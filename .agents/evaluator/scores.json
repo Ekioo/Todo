@@ -1,0 +1,24 @@
+{
+  "58": {
+    "updatedAt": "2026-04-19T15:27:00.0416641",
+    "agent": "programmer",
+    "scores": {
+      "first_pass_rate": 5,
+      "feedback_compliance": 5,
+      "delivery_quality": 4,
+      "block_rate": 5
+    },
+    "global": 4.75
+  },
+  "59": {
+    "updatedAt": "2026-04-19T16:10:06.3993871",
+    "agent": "programmer",
+    "scores": {
+      "first_pass_rate": 5,
+      "feedback_compliance": 5,
+      "delivery_quality": 4,
+      "block_rate": 5
+    },
+    "global": 4.75
+  }
+}
