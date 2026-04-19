@@ -94,6 +94,7 @@ public sealed class TicketCommentAddedTriggerSpec : TriggerSpec
 [JsonDerivedType(typeof(TicketAgeConditionSpec), "ticketAge")]
 [JsonDerivedType(typeof(HasParentConditionSpec), "hasParent")]
 [JsonDerivedType(typeof(AllSubTicketsInStatusConditionSpec), "allSubTicketsInStatus")]
+[JsonDerivedType(typeof(TicketCountInColumnConditionSpec), "ticketCountInColumn")]
 public abstract class ConditionSpec
 {
     /// <summary>When true, the condition result is inverted (NOT logic).</summary>
@@ -160,6 +161,22 @@ public sealed class HasParentConditionSpec : ConditionSpec
 public sealed class AllSubTicketsInStatusConditionSpec : ConditionSpec
 {
     public List<string> Statuses { get; set; } = new() { "Done" };
+}
+
+/// <summary>
+/// Generic count-based condition: matches if the number of tickets assigned to a given member
+/// (or the firing ticket's assignee when <see cref="SameAssignee"/>) in the listed columns
+/// satisfies the operator/value comparison. Generalizes NoPendingTickets (which is
+/// equivalent to Operator="==" Value=0).
+/// </summary>
+public sealed class TicketCountInColumnConditionSpec : ConditionSpec
+{
+    public List<string> Columns { get; set; } = new();
+    public string? AssigneeSlug { get; set; }
+    public bool SameAssignee { get; set; }
+    /// <summary>One of "==", "!=", "&lt;", "&lt;=", "&gt;", "&gt;=".</summary>
+    public string Operator { get; set; } = "==";
+    public int Value { get; set; }
 }
 
 public sealed class TicketAgeConditionSpec : ConditionSpec

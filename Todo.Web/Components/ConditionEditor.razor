@@ -14,6 +14,7 @@
             <option value="ticketAge">@L["CondTypeTicketAge"]</option>
             <option value="hasParent">@L["CondTypeHasParent"]</option>
             <option value="allSubTicketsInStatus">@L["CondTypeAllSubTicketsInStatus"]</option>
+            <option value="ticketCountInColumn">@L["CondTypeTicketCountInColumn"]</option>
         </select>
     </label>
 
@@ -118,6 +119,39 @@
                 }
             </div>
             break;
+        case TicketCountInColumnConditionSpec s:
+            <div class="column-picker">
+                <div class="column-picker-label">@L["ColumnsOneOrMore"]</div>
+                @foreach (var c in Columns)
+                {
+                    var col = c;
+                    <label class="column-check"><input type="checkbox" checked="@s.Columns.Contains(col)"
+                               @onchange="e => ToggleColumn(s.Columns, col, (bool)e.Value!)" /><span>@col</span></label>
+                }
+            </div>
+            <label class="column-check"><input type="checkbox" checked="@s.SameAssignee"
+                       @onchange="e => s.SameAssignee = (bool)e.Value!" /><span>@L["CondCountSameAssignee"]</span></label>
+            <label>@L["AssigneeOptional"]
+                <select value="@(s.AssigneeSlug ?? "")" disabled="@s.SameAssignee"
+                        @onchange="e => s.AssigneeSlug = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!">
+                    <option value="">@L["AnyMember"]</option>
+                    @foreach (var sk in Skills) { <option value="@sk">@sk</option> }
+                </select>
+            </label>
+            <label>@L["CondCountOperator"]
+                <select value="@s.Operator" @onchange="e => s.Operator = (string)e.Value!">
+                    <option value="==">=</option>
+                    <option value="!=">!=</option>
+                    <option value="&lt;">&lt;</option>
+                    <option value="&lt;=">&lt;=</option>
+                    <option value="&gt;">&gt;</option>
+                    <option value="&gt;=">&gt;=</option>
+                </select>
+            </label>
+            <label>@L["CondCountValue"]
+                <input type="number" @bind="s.Value" min="0" />
+            </label>
+            break;
         case TicketAgeConditionSpec s:
             <label>@L["Field"]
                 <select value="@s.Field" @onchange="e => s.Field = (string)e.Value!">
@@ -161,6 +195,7 @@
         TicketAgeConditionSpec => "ticketAge",
         HasParentConditionSpec => "hasParent",
         AllSubTicketsInStatusConditionSpec => "allSubTicketsInStatus",
+        TicketCountInColumnConditionSpec => "ticketCountInColumn",
         _ => "ticketInColumn",
     };
 
@@ -177,6 +212,7 @@
             "ticketAge" => new TicketAgeConditionSpec(),
             "hasParent" => new HasParentConditionSpec(),
             "allSubTicketsInStatus" => new AllSubTicketsInStatusConditionSpec { Statuses = new List<string> { "Done" } },
+            "ticketCountInColumn" => new TicketCountInColumnConditionSpec { Columns = new List<string> { "InProgress" }, SameAssignee = true, Operator = "==", Value = 0 },
             _ => new TicketInColumnConditionSpec { Columns = new List<string> { "Todo" } },
         };
         await OnReplace.InvokeAsync(spec);

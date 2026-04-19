@@ -156,7 +156,7 @@ public sealed class AutomationEngine : BackgroundService
                 Runs = _runs,
                 Now = DateTime.UtcNow,
             };
-            _ = ExecuteAutomationAsync(urt, entry.Automation, entry.Firing, ct, entry.Trigger, utctx);
+            await ExecuteAutomationAsync(urt, entry.Automation, entry.Firing, ct, entry.Trigger, utctx);
         }
 
         var projects = await _projects.ListProjectsAsync();
@@ -194,7 +194,10 @@ public sealed class AutomationEngine : BackgroundService
                 foreach (var firing in firings)
                 {
                     if (!await ConditionsMatchAsync(rt, automation, firing)) continue;
-                    _ = ExecuteAutomationAsync(rt, automation, firing, ct, trigger, tctx);
+                    // Awaited: the prep phase (conditions, moves, gates) runs to completion, reserving
+                    // DB state and concurrency slots before we evaluate the next firing. The actual
+                    // long-running subprocess is fire-and-forget inside ExecuteRunAgentActionAsync.
+                    await ExecuteAutomationAsync(rt, automation, firing, ct, trigger, tctx);
                 }
             }
         }
@@ -229,6 +232,7 @@ public sealed class AutomationEngine : BackgroundService
             AssignedToConditionSpec c              => EvaluateAssignedToAsync(rt, c, firing),
             HasParentConditionSpec c               => EvaluateHasParentAsync(rt, c, firing),
             AllSubTicketsInStatusConditionSpec c   => EvaluateAllSubTicketsInStatusAsync(rt, c, firing),
+            TicketCountInColumnConditionSpec c     => EvaluateTicketCountInColumnAsync(rt, c, firing),
             TicketAgeConditionSpec c               => EvaluateTicketAgeAsync(rt, c, firing),
             _                                      => Task.FromResult(true),
         };
@@ -340,6 +344,37 @@ public sealed class AutomationEngine : BackgroundService
         return ticket.SubTickets.All(s => c.Statuses.Contains(s.Status));
     }
 
+    private async Task<bool> EvaluateTicketCountInColumnAsync(ProjectRuntime rt, TicketCountInColumnConditionSpec c, TriggerFiring firing)
+    {
+        string? slug = c.AssigneeSlug;
+        if (c.SameAssignee)
+        {
+            if (firing.TicketId is null) return false;
+            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+            slug = ticket?.AssignedTo;
+            if (string.IsNullOrEmpty(slug)) return false;
+        }
+
+        var cols = c.Columns.Count > 0 ? c.Columns : new List<string> { "Todo", "InProgress" };
+        int count = 0;
+        foreach (var col in cols)
+        {
+            var list = await _tickets.ListTicketsAsync(rt.Slug, statusFilter: col);
+            count += string.IsNullOrEmpty(slug) ? list.Count : list.Count(t => t.AssignedTo == slug);
+        }
+
+        return c.Operator switch
+        {
+            "=="  => count == c.Value,
+            "!="  => count != c.Value,
+            "<"   => count < c.Value,
+            "<="  => count <= c.Value,
+            ">"   => count > c.Value,
+            ">="  => count >= c.Value,
+            _     => false,
+        };
+    }
+
     private async Task<bool> EvaluateTicketAgeAsync(ProjectRuntime rt, TicketAgeConditionSpec c, TriggerFiring firing)
     {
         if (firing.TicketId is null) return true;
@@ -370,15 +405,19 @@ public sealed class AutomationEngine : BackgroundService
             catch (Exception ex) { _logger.LogWarning(ex, "CommitFiring failed for {Id}", automation.Id); }
         }
 
-        foreach (var action in automation.Actions)
+        for (int i = 0; i < automation.Actions.Count; i++)
         {
+            var action = automation.Actions[i];
             switch (action)
             {
                 case RunAgentActionSpec a:
                 {
-                    var skip = await ExecuteRunAgentActionAsync(rt, automation, firing, a, ct, CommitAsync, state);
+                    var remaining = automation.Actions.Skip(i + 1).ToList();
+                    var skip = await ExecuteRunAgentActionAsync(rt, automation, firing, a, ct, CommitAsync, state, remaining);
+                    // Whether skipped or dispatched, remaining actions are NOT processed here:
+                    // skipped → they'd be wrong without the run; dispatched → the continuation handles them.
                     if (skip) return null;
-                    break;
+                    return state.LastRun;
                 }
                 case MoveTicketStatusActionSpec m when firing.TicketId is not null:
                     await ExecuteMoveTicketStatusActionAsync(rt, firing, m, state);
@@ -411,7 +450,9 @@ public sealed class AutomationEngine : BackgroundService
     }
 
     // Returns true when the caller should abort and return null (gate not passed).
-    private async Task<bool> ExecuteRunAgentActionAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, RunAgentActionSpec a, CancellationToken ct, Func<Task> commitAsync, ActionState state)
+    // When false, the run has been DISPATCHED (not awaited): the caller must NOT continue processing
+    // actions after this one — the continuation will handle <paramref name="remainingActions"/>.
+    private async Task<bool> ExecuteRunAgentActionAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, RunAgentActionSpec a, CancellationToken ct, Func<Task> commitAsync, ActionState state, List<ActionSpec> remainingActions)
     {
         // Resolve {assignee} placeholder in Agent field (delegation pattern).
         var agentName = a.Agent;
@@ -434,7 +475,8 @@ public sealed class AutomationEngine : BackgroundService
 
         // Resolve skill file by convention: .agents/{agent}/SKILL.md
         var skillFile = $"{agentName}/SKILL.md";
-        var group = string.IsNullOrEmpty(a.ConcurrencyGroup) ? agentName : a.ConcurrencyGroup;
+        // Resolve {assignee} placeholder in concurrency group too (for generic dispatch pattern).
+        var group = string.IsNullOrEmpty(a.ConcurrencyGroup) ? agentName : a.ConcurrencyGroup.Replace("{assignee}", agentName);
 
         // Daily budget gate (non-CEO agents only — CEO can always run to react to budget).
         if (rt.Config?.DailyBudgetUsd is decimal cap && group != "ceo"
@@ -491,11 +533,43 @@ public sealed class AutomationEngine : BackgroundService
             try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get("ActAgentStarted", agentName), "automation"); }
             catch { /* non-blocking */ }
         }
-        state.LastRun = await _runner.RunAsync(runCtx, ct);
+
+        // Start the run. _runner.RunAsync registers the run in _runs synchronously (before its
+        // first await), so the concurrency group is reserved by the time this method returns —
+        // meaning the NEXT firing's condition checks will see the group as busy. Do NOT await
+        // the full task; schedule the post-run continuation to run remaining actions.
+        var runTask = _runner.RunAsync(runCtx, ct);
+        var statusBefore = state.StatusBeforeMove;
+        var statusAfter = state.StatusAfterMove;
+        var assigneeBefore = state.AssigneeBeforeMove;
+        _ = HandleRunCompletionAsync(runTask, rt, firing, a, agentName, statusBefore, statusAfter, assigneeBefore, remainingActions, ct);
+        state.LastRun = null;
+        return false;
+    }
+
+    private async Task HandleRunCompletionAsync(
+        Task<AgentRun> runTask,
+        ProjectRuntime rt,
+        TriggerFiring firing,
+        RunAgentActionSpec spec,
+        string agentName,
+        string? statusBeforeMove,
+        string? statusAfterMove,
+        string? assigneeBeforeMove,
+        List<ActionSpec> remainingActions,
+        CancellationToken ct)
+    {
+        AgentRun run;
+        try { run = await runTask; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "runAgent {Agent} crashed for ticket #{Id}", agentName, firing.TicketId);
+            return;
+        }
 
         if (firing.TicketId is not null)
         {
-            var statusKey = state.LastRun.Status switch
+            var statusKey = run.Status switch
             {
                 AgentRunStatus.Completed => "ActAgentCompleted",
                 AgentRunStatus.Failed    => "ActAgentFailed",
@@ -506,22 +580,21 @@ public sealed class AutomationEngine : BackgroundService
             catch { /* non-blocking */ }
         }
 
-        // Restore ticket status if agent failed/stopped and a prior moveTicketStatus changed it.
-        if (a.RestoreStatusOnFail
-            && state.LastRun.Status is AgentRunStatus.Failed or AgentRunStatus.Stopped
-            && state.StatusBeforeMove is not null && state.StatusAfterMove is not null
+        if (spec.RestoreStatusOnFail
+            && run.Status is AgentRunStatus.Failed or AgentRunStatus.Stopped
+            && statusBeforeMove is not null && statusAfterMove is not null
             && firing.TicketId is not null)
         {
             try
             {
                 var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
                 if (ticket is not null
-                    && string.Equals(ticket.Status, state.StatusAfterMove, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(ticket.AssignedTo ?? "", state.AssigneeBeforeMove ?? "", StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(ticket.Status, statusAfterMove, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(ticket.AssignedTo ?? "", assigneeBeforeMove ?? "", StringComparison.OrdinalIgnoreCase))
                 {
-                    await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, state.StatusBeforeMove, "automation");
+                    await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, statusBeforeMove, "automation");
                     _logger.LogInformation("Restored #{Id} to {Status} (run {Agent} failed)",
-                        firing.TicketId, state.StatusBeforeMove, agentName);
+                        firing.TicketId, statusBeforeMove, agentName);
                 }
             }
             catch (Exception ex)
@@ -529,7 +602,24 @@ public sealed class AutomationEngine : BackgroundService
                 _logger.LogWarning(ex, "Failed to restore ticket #{Id} status", firing.TicketId);
             }
         }
-        return false;
+
+        // Process remaining actions (typically commitAgentMemory) that depend on the run having finished.
+        foreach (var post in remainingActions)
+        {
+            try
+            {
+                switch (post)
+                {
+                    case CommitAgentMemoryActionSpec cm: await ExecuteCommitAgentMemoryActionAsync(rt, cm); break;
+                    case AddCommentActionSpec ac when firing.TicketId is not null: await ExecuteAddCommentActionAsync(rt, firing, ac); break;
+                    case SetLabelsActionSpec sl when firing.TicketId is not null: await ExecuteSetLabelsActionAsync(rt, firing, sl); break;
+                    case AssignTicketActionSpec at when firing.TicketId is not null: await ExecuteAssignTicketActionAsync(rt, firing, at); break;
+                    case ExecutePowerShellActionSpec ps: await ExecutePowerShellAsync(ps, rt.Workspace!, ct); break;
+                    // A second RunAgent post-run is not supported — skip silently.
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Post-run action {Type} failed", post.GetType().Name); }
+        }
     }
 
     private async Task ExecuteMoveTicketStatusActionAsync(ProjectRuntime rt, TriggerFiring firing, MoveTicketStatusActionSpec m, ActionState state)
