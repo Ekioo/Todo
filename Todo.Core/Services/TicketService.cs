@@ -474,6 +474,16 @@ public class TicketService
     /// Returns tickets where @handle appears in description or comments,
     /// optionally filtered by date range.
     /// </summary>
+    public async Task AddActivityAsync(string projectSlug, int ticketId, string text, string author = "automation")
+    {
+        await using var db = _projectService.GetProjectDb(projectSlug);
+        await EnsureActivityTableAsync(db);
+        var ticket = await db.Tickets.FindAsync(ticketId);
+        if (ticket is null) return;
+        db.ActivityEntries.Add(new ActivityEntry { TicketId = ticketId, Author = author, Text = text });
+        await db.SaveChangesAsync();
+    }
+
     public async Task<List<Ticket>> ListMentionedTicketsAsync(string projectSlug, string handle, DateTime? since = null, DateTime? until = null)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);

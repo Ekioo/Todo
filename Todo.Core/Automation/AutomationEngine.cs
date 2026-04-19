@@ -405,7 +405,25 @@ public sealed class AutomationEngine : BackgroundService
                         ExtraContext = a.Context,
                     };
                     _sessions.SetLastDispatched(rt.Workspace!, agentName, DateTime.UtcNow);
+                    if (firing.TicketId is not null)
+                    {
+                        try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, $"a démarré l'agent {agentName}", "automation"); }
+                        catch { /* non-blocking */ }
+                    }
                     lastRun = await _runner.RunAsync(runCtx, ct);
+
+                    if (firing.TicketId is not null)
+                    {
+                        var statusText = lastRun.Status switch
+                        {
+                            AgentRunStatus.Completed => $"a terminé l'agent {agentName}",
+                            AgentRunStatus.Failed    => $"l'agent {agentName} a échoué",
+                            AgentRunStatus.Stopped   => $"l'agent {agentName} a été arrêté",
+                            _                        => $"l'agent {agentName} s'est terminé ({lastRun.Status})",
+                        };
+                        try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, statusText, "automation"); }
+                        catch { /* non-blocking */ }
+                    }
 
                     // Restore ticket status if agent failed/stopped and a prior moveTicketStatus changed it.
                     if (a.RestoreStatusOnFail
@@ -459,6 +477,12 @@ public sealed class AutomationEngine : BackgroundService
                         var allLabels = await _labels.ListLabelsAsync(rt.Slug);
                         var newIds = allLabels.Where(l => currentNames.Contains(l.Name)).Select(l => l.Id).ToList();
                         await _tickets.SetTicketLabelsAsync(rt.Slug, firing.TicketId.Value, newIds);
+                        var parts = new List<string>();
+                        if (s.Add.Count > 0) parts.Add($"ajouté : {string.Join(", ", s.Add)}");
+                        if (s.Remove.Count > 0) parts.Add($"retiré : {string.Join(", ", s.Remove)}");
+                        if (parts.Count > 0)
+                            try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, $"a modifié les labels ({string.Join(" / ", parts)})", "automation"); }
+                            catch { /* non-blocking */ }
                     }
                     catch { }
                     break;
