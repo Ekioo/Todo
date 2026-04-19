@@ -742,6 +742,13 @@ else
     private TicketSummary? _subKanbanParent = null;
     private bool _unparentHover = false;
     private int? _dropTargetTicketId = null;
+    private bool _suppressRender = false;
+
+    protected override bool ShouldRender()
+    {
+        if (_suppressRender) { _suppressRender = false; return false; }
+        return true;
+    }
 
     // Last-visited tracking for "updated" badge
     private DateTime? _lastVisitedAt;
@@ -1145,7 +1152,9 @@ else
     private void OnColumnDragOver(int colIndex, DragEventArgs e)
     {
         if (_draggedColumn is null) return;
-        _colDropIndex = e.OffsetX < 115 ? colIndex : colIndex + 1;
+        var newIdx = e.OffsetX < 115 ? colIndex : colIndex + 1;
+        if (_colDropIndex == newIdx) { _suppressRender = true; return; }
+        _colDropIndex = newIdx;
     }
 
     private async Task OnColumnDrop()
@@ -1166,15 +1175,26 @@ else
     private void OnDragOverCard(string status, int cardIndex, TicketSummary ticket)
     {
         if (_draggedTicket is null || _draggedTicket.Id == ticket.Id) return;
+        var newDropTarget = (_subKanbanParentId is null) ? ticket.Id : (int?)null;
+        if (_dragOverStatus == status && _dragHoverIndex == cardIndex && _dragActiveSlot == -1 && _dropTargetTicketId == newDropTarget)
+        {
+            _suppressRender = true;
+            return;
+        }
         _dragOverStatus = status;
         _dragHoverIndex = cardIndex;
         _dragActiveSlot = -1;
-        _dropTargetTicketId = (_subKanbanParentId is null) ? ticket.Id : null;
+        _dropTargetTicketId = newDropTarget;
     }
 
     private void OnDragOverSlot(string status, int slotIndex)
     {
         if (_draggedTicket is null) return;
+        if (_dragOverStatus == status && _dragActiveSlot == slotIndex && _dragHoverIndex == -1 && _dropTargetTicketId == null)
+        {
+            _suppressRender = true;
+            return;
+        }
         _dragOverStatus = status;
         _dragActiveSlot = slotIndex;
         _dragHoverIndex = -1;
@@ -1184,9 +1204,15 @@ else
     private void OnDragOverColumn(string status, DragEventArgs e)
     {
         if (_draggedTicket is null) return;
+        var slotCount = GetTickets(status).Count;
+        if (_dragOverStatus == status && _dragHoverIndex == -1 && _dragActiveSlot == slotCount && _dropTargetTicketId == null)
+        {
+            _suppressRender = true;
+            return;
+        }
         _dragOverStatus = status;
         _dragHoverIndex = -1;
-        _dragActiveSlot = GetTickets(status).Count;
+        _dragActiveSlot = slotCount;
         _dropTargetTicketId = null;
     }
 
