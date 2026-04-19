@@ -105,6 +105,8 @@ public static class Endpoints
             try
             {
                 var ticket = await ts.UpdateTicketAsync(slug, id, req.Title, req.Description, req.Author, req.Priority, req.AssignedTo);
+                if (ticket is not null && req.LabelIds is not null)
+                    await ts.SetTicketLabelsAsync(slug, id, req.LabelIds);
                 if (ticket is not null) notifier.NotifyProjectUpdated(slug);
                 return ticket is null ? Results.NotFound() : Results.Ok(ticket);
             }
