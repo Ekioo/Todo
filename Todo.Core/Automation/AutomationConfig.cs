@@ -177,6 +177,8 @@ public sealed class TicketAgeConditionSpec : ConditionSpec
 [JsonDerivedType(typeof(SetLabelsActionSpec), "setLabels")]
 [JsonDerivedType(typeof(AssignTicketActionSpec), "assignTicket")]
 [JsonDerivedType(typeof(AddCommentActionSpec), "addComment")]
+[JsonDerivedType(typeof(CommitAgentMemoryActionSpec), "commitAgentMemory")]
+[JsonDerivedType(typeof(ExecutePowerShellActionSpec), "executePowerShell")]
 public abstract class ActionSpec { }
 
 public sealed class RunAgentActionSpec : ActionSpec
@@ -220,4 +222,21 @@ public sealed class AddCommentActionSpec : ActionSpec
     public string Content { get; set; } = "";
     /// <summary>Author of the comment (member slug).</summary>
     public string Author { get; set; } = "";
+}
+
+/// <summary>Persists the given agent's memory.md (touch / flush). No-op placeholder for now.</summary>
+public sealed class CommitAgentMemoryActionSpec : ActionSpec
+{
+    public required string Agent { get; set; }
+}
+
+/// <summary>Runs a PowerShell script or file with optional arguments and timeout.</summary>
+public sealed class ExecutePowerShellActionSpec : ActionSpec
+{
+    public string Script { get; set; } = "";
+    public string? ScriptFile { get; set; }
+    public List<string> Arguments { get; set; } = new();
+    public int TimeoutSeconds { get; set; } = 60;
+    public bool AbortOnFailure { get; set; }
+    public Dictionary<string, string> Env { get; set; } = new();
 }

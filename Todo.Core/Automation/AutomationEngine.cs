@@ -217,109 +217,150 @@ public sealed class AutomationEngine : BackgroundService
         return true;
     }
 
-    private async Task<bool> EvaluateSingleConditionAsync(ProjectRuntime rt, ConditionSpec cond, TriggerFiring firing)
-    {
-        switch (cond)
+    private Task<bool> EvaluateSingleConditionAsync(ProjectRuntime rt, ConditionSpec cond, TriggerFiring firing) =>
+        cond switch
         {
-            case TicketInColumnConditionSpec c:
-                if (firing.TicketStatus is null) return false;
-                return c.Columns.Count == 0 || c.Columns.Contains(firing.TicketStatus);
-            case NoPendingTicketsConditionSpec c:
-                var cols = c.Columns ?? new List<string> { "Todo", "InProgress" };
-                // Build the set of slugs to check against.
-                HashSet<string>? slugsToCheck = null;
-                if (!string.IsNullOrEmpty(c.ConcurrencyGroup))
+            TicketInColumnConditionSpec c         => Task.FromResult(EvaluateTicketInColumn(c, firing)),
+            NoPendingTicketsConditionSpec c        => EvaluateNoPendingTicketsAsync(rt, c, firing),
+            MinDescriptionLengthConditionSpec c    => EvaluateMinDescriptionLengthAsync(rt, c, firing),
+            FieldLengthConditionSpec c             => EvaluateFieldLengthAsync(rt, c, firing),
+            PriorityConditionSpec c                => EvaluatePriorityAsync(rt, c, firing),
+            LabelsConditionSpec c                  => EvaluateLabelsAsync(rt, c, firing),
+            AssignedToConditionSpec c              => EvaluateAssignedToAsync(rt, c, firing),
+            HasParentConditionSpec c               => EvaluateHasParentAsync(rt, c, firing),
+            AllSubTicketsInStatusConditionSpec c   => EvaluateAllSubTicketsInStatusAsync(rt, c, firing),
+            TicketAgeConditionSpec c               => EvaluateTicketAgeAsync(rt, c, firing),
+            _                                      => Task.FromResult(true),
+        };
+
+    private static bool EvaluateTicketInColumn(TicketInColumnConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketStatus is null) return false;
+        return c.Columns.Count == 0 || c.Columns.Contains(firing.TicketStatus);
+    }
+
+    private async Task<bool> EvaluateNoPendingTicketsAsync(ProjectRuntime rt, NoPendingTicketsConditionSpec c, TriggerFiring firing)
+    {
+        var cols = c.Columns ?? new List<string> { "Todo", "InProgress" };
+        HashSet<string>? slugsToCheck = null;
+        if (!string.IsNullOrEmpty(c.ConcurrencyGroup))
+        {
+            slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (rt.Config is not null)
+            {
+                foreach (var auto in rt.Config.Automations)
+                foreach (var act in auto.Actions)
                 {
-                    // Collect all agents from runAgent actions sharing this concurrencyGroup.
-                    slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    if (rt.Config is not null)
-                    {
-                        foreach (var auto in rt.Config.Automations)
-                        foreach (var act in auto.Actions)
-                        {
-                            if (act is RunAgentActionSpec rcs
-                                && string.Equals(rcs.ConcurrencyGroup, c.ConcurrencyGroup, StringComparison.OrdinalIgnoreCase))
-                            {
-                                slugsToCheck.Add(rcs.Agent);
-                            }
-                        }
-                    }
+                    if (act is RunAgentActionSpec rcs
+                        && string.Equals(rcs.ConcurrencyGroup, c.ConcurrencyGroup, StringComparison.OrdinalIgnoreCase))
+                        slugsToCheck.Add(rcs.Agent);
                 }
-                else if (c.SameAssignee && firing.TicketId is not null)
-                {
-                    var firingTicket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                    if (firingTicket?.AssignedTo is not null)
-                        slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { firingTicket.AssignedTo };
-                }
-                else if (c.AssigneeSlug is not null)
-                {
-                    slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { c.AssigneeSlug };
-                }
-                foreach (var col in cols)
-                {
-                    var list = await _tickets.ListTicketsAsync(rt.Slug, statusFilter: col);
-                    if (slugsToCheck is null)
-                    {
-                        if (list.Count > 0) return false;
-                    }
-                    else
-                    {
-                        if (list.Any(t => t.AssignedTo is not null && slugsToCheck.Contains(t.AssignedTo))) return false;
-                    }
-                }
-                return true;
-            case MinDescriptionLengthConditionSpec c:
-                if (firing.TicketId is null) return true;
-                var ticketMdl = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                return ticketMdl is not null && ticketMdl.Description.Length >= c.Length;
-            case FieldLengthConditionSpec fl:
-                if (firing.TicketId is null) return true;
-                var ticketFl = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketFl is null) return false;
-                var fieldValue = fl.Field == "title" ? ticketFl.Title : ticketFl.Description;
-                return fl.Mode == "max" ? fieldValue.Length <= fl.Length : fieldValue.Length >= fl.Length;
-            case PriorityConditionSpec pc:
-                if (firing.TicketId is null) return true;
-                var ticketPc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketPc is null) return false;
-                return pc.Priorities.Count == 0 || pc.Priorities.Contains(ticketPc.Priority.ToString());
-            case LabelsConditionSpec lc:
-                if (firing.TicketId is null) return true;
-                var ticketLc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketLc is null) return false;
-                return lc.Labels.Count == 0 || ticketLc.Labels.Any(l => lc.Labels.Contains(l.Name));
-            case AssignedToConditionSpec ac:
-                if (firing.TicketId is null) return true;
-                var ticketAc = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketAc is null) return false;
-                return ac.Slugs.Count == 0
-                    ? ticketAc.AssignedTo is null
-                    : ac.Slugs.Contains(ticketAc.AssignedTo ?? "");
-            case HasParentConditionSpec hp:
-                if (firing.TicketId is null) return true;
-                var ticketHp = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketHp is null) return false;
-                return hp.Value ? ticketHp.ParentId is not null : ticketHp.ParentId is null;
-            case AllSubTicketsInStatusConditionSpec asub:
-                if (firing.TicketId is null) return false;
-                var ticketAsub = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketAsub is null || ticketAsub.SubTickets.Count == 0) return false;
-                return ticketAsub.SubTickets.All(s => asub.Statuses.Contains(s.Status));
-            case TicketAgeConditionSpec ta:
-                if (firing.TicketId is null) return true;
-                var ticketTa = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                if (ticketTa is null) return false;
-                var dateField = ta.Field == "updatedAt" ? ticketTa.UpdatedAt : ticketTa.CreatedAt;
-                var age = DateTime.UtcNow - dateField;
-                return ta.Mode == "newerThan" ? age.TotalHours < ta.Hours : age.TotalHours >= ta.Hours;
-            default:
-                return true;
+            }
         }
+        else if (c.SameAssignee && firing.TicketId is not null)
+        {
+            var firingTicket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+            if (firingTicket?.AssignedTo is not null)
+                slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { firingTicket.AssignedTo };
+        }
+        else if (c.AssigneeSlug is not null)
+        {
+            slugsToCheck = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { c.AssigneeSlug };
+        }
+        foreach (var col in cols)
+        {
+            var list = await _tickets.ListTicketsAsync(rt.Slug, statusFilter: col);
+            if (slugsToCheck is null)
+            {
+                if (list.Count > 0) return false;
+            }
+            else
+            {
+                if (list.Any(t => t.AssignedTo is not null && slugsToCheck.Contains(t.AssignedTo))) return false;
+            }
+        }
+        return true;
+    }
+
+    private async Task<bool> EvaluateMinDescriptionLengthAsync(ProjectRuntime rt, MinDescriptionLengthConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        return ticket is not null && ticket.Description.Length >= c.Length;
+    }
+
+    private async Task<bool> EvaluateFieldLengthAsync(ProjectRuntime rt, FieldLengthConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        var value = c.Field == "title" ? ticket.Title : ticket.Description;
+        return c.Mode == "max" ? value.Length <= c.Length : value.Length >= c.Length;
+    }
+
+    private async Task<bool> EvaluatePriorityAsync(ProjectRuntime rt, PriorityConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        return c.Priorities.Count == 0 || c.Priorities.Contains(ticket.Priority.ToString());
+    }
+
+    private async Task<bool> EvaluateLabelsAsync(ProjectRuntime rt, LabelsConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        return c.Labels.Count == 0 || ticket.Labels.Any(l => c.Labels.Contains(l.Name));
+    }
+
+    private async Task<bool> EvaluateAssignedToAsync(ProjectRuntime rt, AssignedToConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        return c.Slugs.Count == 0
+            ? ticket.AssignedTo is null
+            : c.Slugs.Contains(ticket.AssignedTo ?? "");
+    }
+
+    private async Task<bool> EvaluateHasParentAsync(ProjectRuntime rt, HasParentConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        return c.Value ? ticket.ParentId is not null : ticket.ParentId is null;
+    }
+
+    private async Task<bool> EvaluateAllSubTicketsInStatusAsync(ProjectRuntime rt, AllSubTicketsInStatusConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return false;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null || ticket.SubTickets.Count == 0) return false;
+        return ticket.SubTickets.All(s => c.Statuses.Contains(s.Status));
+    }
+
+    private async Task<bool> EvaluateTicketAgeAsync(ProjectRuntime rt, TicketAgeConditionSpec c, TriggerFiring firing)
+    {
+        if (firing.TicketId is null) return true;
+        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+        if (ticket is null) return false;
+        var dateField = c.Field == "updatedAt" ? ticket.UpdatedAt : ticket.CreatedAt;
+        var age = DateTime.UtcNow - dateField;
+        return c.Mode == "newerThan" ? age.TotalHours < c.Hours : age.TotalHours >= c.Hours;
+    }
+
+    private sealed class ActionState
+    {
+        public AgentRun? LastRun;
+        public string? StatusBeforeMove;
+        public string? StatusAfterMove;
+        public string? AssigneeBeforeMove;
     }
 
     private async Task<AgentRun?> ExecuteAutomationAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, CancellationToken ct, ITrigger? trigger = null, TriggerContext? tctx = null)
     {
-        AgentRun? lastRun = null;
+        var state = new ActionState();
         bool committed = false;
         async Task CommitAsync()
         {
@@ -328,10 +369,6 @@ public sealed class AutomationEngine : BackgroundService
             try { await trigger.CommitFiringAsync(tctx, firing); }
             catch (Exception ex) { _logger.LogWarning(ex, "CommitFiring failed for {Id}", automation.Id); }
         }
-        // Track the last moveTicketStatus so we can restore on agent failure.
-        string? statusBeforeMove = null;
-        string? statusAfterMove = null;
-        string? assigneeBeforeMove = null;
 
         foreach (var action in automation.Actions)
         {
@@ -339,205 +376,29 @@ public sealed class AutomationEngine : BackgroundService
             {
                 case RunAgentActionSpec a:
                 {
-                    // Resolve {assignee} placeholder in Agent field (delegation pattern).
-                    var agentName = a.Agent;
-                    if (agentName.Contains("{assignee}"))
-                    {
-                        if (firing.TicketId is null)
-                        {
-                            _logger.LogWarning("Placeholder {{assignee}} in Agent but no ticketId in firing — skipping");
-                            return null;
-                        }
-                        var t = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                        var assignee = t?.AssignedTo;
-                        if (string.IsNullOrEmpty(assignee))
-                        {
-                            _logger.LogWarning("Placeholder {{assignee}} in Agent but ticket #{Id} has no assignee — skipping", firing.TicketId);
-                            return null;
-                        }
-                        agentName = agentName.Replace("{assignee}", assignee);
-                    }
-
-                    // Resolve skill file by convention: .agents/{agent}/SKILL.md
-                    var skillFile = $"{agentName}/SKILL.md";
-                    var group = string.IsNullOrEmpty(a.ConcurrencyGroup) ? agentName : a.ConcurrencyGroup;
-
-                    // Daily budget gate (non-CEO agents only — CEO can always run to react to budget).
-                    if (rt.Config?.DailyBudgetUsd is decimal cap && group != "ceo"
-                        && _cost.IsBudgetExceeded(rt.Workspace!, cap))
-                    {
-                        _logger.LogInformation("Budget exceeded for {Slug} — skipping {Agent}", rt.Slug, agentName);
-                        return null;
-                    }
-
-                    // Quality gate: min description length on targeted ticket.
-                    if (rt.Config?.MinDescriptionLength is int minLen && firing.TicketId is not null)
-                    {
-                        var t = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                        if (t is not null && t.Description.Length < minLen)
-                        {
-                            _logger.LogInformation("Ticket #{Id} description too short ({Len}<{Min}) — skipping {Agent}",
-                                firing.TicketId, t.Description.Length, minLen, agentName);
-                            return null;
-                        }
-                    }
-
-                    // Dedup: avoid re-dispatch on same (agent, ticket) while a run is active.
-                    if (firing.TicketId is not null
-                        && _runs.ActiveForTicket(rt.Slug, firing.TicketId.Value).Any(r => r.AgentName == agentName))
-                        return null;
-
-                    // Concurrency group: one run at a time (unless group is null).
-                    if (_runs.HasActiveInGroup(rt.Slug, group)) return null;
-
-                    // Mutually exclusive groups must be idle.
-                    if (a.MutuallyExclusiveWith.Count > 0 && _runs.HasActiveAny(rt.Slug, a.MutuallyExclusiveWith)) return null;
-
-                    // All transient gates passed — let the trigger persist its "seen" marker.
-                    await CommitAsync();
-
-                    var runCtx = new ClaudeRunContext
-                    {
-                        ProjectSlug = rt.Slug,
-                        WorkspacePath = rt.Workspace!,
-                        AgentName = agentName,
-                        SkillFile = skillFile,
-                        TicketId = firing.TicketId,
-                        TicketTitle = firing.TicketTitle,
-                        TicketStatus = firing.TicketStatus,
-                        MaxTurns = a.MaxTurns,
-                        ConcurrencyGroup = group,
-                        Env = a.Env,
-                        Model = a.Model,
-                        ExtraContext = a.Context,
-                    };
-                    _sessions.SetLastDispatched(rt.Workspace!, agentName, DateTime.UtcNow);
-                    if (firing.TicketId is not null)
-                    {
-                        try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get("ActAgentStarted", agentName), "automation"); }
-                        catch { /* non-blocking */ }
-                    }
-                    lastRun = await _runner.RunAsync(runCtx, ct);
-
-                    if (firing.TicketId is not null)
-                    {
-                        var statusKey = lastRun.Status switch
-                        {
-                            AgentRunStatus.Completed => "ActAgentCompleted",
-                            AgentRunStatus.Failed    => "ActAgentFailed",
-                            AgentRunStatus.Stopped   => "ActAgentStopped",
-                            _                        => "ActAgentCompleted",
-                        };
-                        try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get(statusKey, agentName), "automation"); }
-                        catch { /* non-blocking */ }
-                    }
-
-                    // Restore ticket status if agent failed/stopped and a prior moveTicketStatus changed it.
-                    if (a.RestoreStatusOnFail
-                        && lastRun.Status is AgentRunStatus.Failed or AgentRunStatus.Stopped
-                        && statusBeforeMove is not null && statusAfterMove is not null
-                        && firing.TicketId is not null)
-                    {
-                        try
-                        {
-                            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                            if (ticket is not null
-                                && string.Equals(ticket.Status, statusAfterMove, StringComparison.OrdinalIgnoreCase)
-                                && string.Equals(ticket.AssignedTo ?? "", assigneeBeforeMove ?? "", StringComparison.OrdinalIgnoreCase))
-                            {
-                                await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, statusBeforeMove, "automation");
-                                _logger.LogInformation("Restored #{Id} to {Status} (run {Agent} failed)",
-                                    firing.TicketId, statusBeforeMove, agentName);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to restore ticket #{Id} status", firing.TicketId);
-                        }
-                    }
+                    var skip = await ExecuteRunAgentActionAsync(rt, automation, firing, a, ct, CommitAsync, state);
+                    if (skip) return null;
                     break;
                 }
                 case MoveTicketStatusActionSpec m when firing.TicketId is not null:
-                {
-                    if (string.Equals(firing.TicketStatus, m.To, StringComparison.OrdinalIgnoreCase))
-                        break; // already in target status
-                    try
-                    {
-                        var ticketBefore = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                        statusBeforeMove = ticketBefore?.Status;
-                        assigneeBeforeMove = ticketBefore?.AssignedTo;
-                        await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, m.To, "automation");
-                        statusAfterMove = m.To;
-                    }
-                    catch { }
+                    await ExecuteMoveTicketStatusActionAsync(rt, firing, m, state);
                     break;
-                }
                 case SetLabelsActionSpec s when firing.TicketId is not null:
-                {
-                    try
-                    {
-                        var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                        if (ticket is null) break;
-                        var currentNames = ticket.Labels.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                        foreach (var name in s.Add) currentNames.Add(name);
-                        foreach (var name in s.Remove) currentNames.Remove(name);
-                        var allLabels = await _labels.ListLabelsAsync(rt.Slug);
-                        var newIds = allLabels.Where(l => currentNames.Contains(l.Name)).Select(l => l.Id).ToList();
-                        await _tickets.SetTicketLabelsAsync(rt.Slug, firing.TicketId.Value, newIds);
-                        var parts = new List<string>();
-                        if (s.Add.Count > 0) parts.Add(_loc.Get("ActLabelsAdded", string.Join(", ", s.Add)));
-                        if (s.Remove.Count > 0) parts.Add(_loc.Get("ActLabelsRemoved", string.Join(", ", s.Remove)));
-                        if (parts.Count > 0)
-                            try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get("ActLabelsChanged", string.Join(" / ", parts)), "automation"); }
-                            catch { /* non-blocking */ }
-                    }
-                    catch { }
+                    await ExecuteSetLabelsActionAsync(rt, firing, s);
                     break;
-                }
                 case AddCommentActionSpec ac when firing.TicketId is not null:
-                {
-                    try
-                    {
-                        var content = ac.Content
-                            .Replace("{ticketId}", firing.TicketId?.ToString() ?? "")
-                            .Replace("{ticketTitle}", firing.TicketTitle ?? "");
-                        if (content.Contains("{assignee}"))
-                        {
-                            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
-                            content = content.Replace("{assignee}", ticket?.AssignedTo ?? "");
-                        }
-                        await _tickets.AddCommentAsync(rt.Slug, firing.TicketId!.Value, content, ac.Author);
-                    }
-                    catch { }
+                    await ExecuteAddCommentActionAsync(rt, firing, ac);
                     break;
-                }
                 case AssignTicketActionSpec at when firing.TicketId is not null:
+                    await ExecuteAssignTicketActionAsync(rt, firing, at);
+                    break;
+                case CommitAgentMemoryActionSpec cm:
+                    await ExecuteCommitAgentMemoryActionAsync(rt, cm);
+                    break;
+                case ExecutePowerShellActionSpec ps:
                 {
-                    try
-                    {
-                        var slug = at.Slug;
-                        if (slug is not null && slug.Contains("{previousAssignee}"))
-                        {
-                            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
-                            slug = slug.Replace("{previousAssignee}", ticket?.AssignedTo ?? "");
-                        }
-                        if (string.IsNullOrEmpty(slug))
-                        {
-                            // unassign
-                            await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId.Value, assignedTo: "", author: "automation");
-                        }
-                        else
-                        {
-                            var members = await _members.ListMembersAsync(rt.Slug);
-                            if (!members.Any(m => string.Equals(m.Slug, slug, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                _logger.LogWarning("assignTicket: member '{Slug}' not found in project {Project}", slug, rt.Slug);
-                                break;
-                            }
-                            await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId.Value, assignedTo: slug, author: "automation");
-                        }
-                    }
-                    catch { }
+                    var abort = await ExecutePowerShellAsync(ps, rt.Workspace!, ct);
+                    if (abort) return state.LastRun;
                     break;
                 }
             }
@@ -546,7 +407,305 @@ public sealed class AutomationEngine : BackgroundService
         // runClaudeSkill action was skipped due to a non-transient reason). Commit now to avoid
         // re-firing every poll.
         await CommitAsync();
-        return lastRun;
+        return state.LastRun;
+    }
+
+    // Returns true when the caller should abort and return null (gate not passed).
+    private async Task<bool> ExecuteRunAgentActionAsync(ProjectRuntime rt, Automation automation, TriggerFiring firing, RunAgentActionSpec a, CancellationToken ct, Func<Task> commitAsync, ActionState state)
+    {
+        // Resolve {assignee} placeholder in Agent field (delegation pattern).
+        var agentName = a.Agent;
+        if (agentName.Contains("{assignee}"))
+        {
+            if (firing.TicketId is null)
+            {
+                _logger.LogWarning("Placeholder {{assignee}} in Agent but no ticketId in firing — skipping");
+                return true;
+            }
+            var t = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+            var assignee = t?.AssignedTo;
+            if (string.IsNullOrEmpty(assignee))
+            {
+                _logger.LogWarning("Placeholder {{assignee}} in Agent but ticket #{Id} has no assignee — skipping", firing.TicketId);
+                return true;
+            }
+            agentName = agentName.Replace("{assignee}", assignee);
+        }
+
+        // Resolve skill file by convention: .agents/{agent}/SKILL.md
+        var skillFile = $"{agentName}/SKILL.md";
+        var group = string.IsNullOrEmpty(a.ConcurrencyGroup) ? agentName : a.ConcurrencyGroup;
+
+        // Daily budget gate (non-CEO agents only — CEO can always run to react to budget).
+        if (rt.Config?.DailyBudgetUsd is decimal cap && group != "ceo"
+            && _cost.IsBudgetExceeded(rt.Workspace!, cap))
+        {
+            _logger.LogInformation("Budget exceeded for {Slug} — skipping {Agent}", rt.Slug, agentName);
+            return true;
+        }
+
+        // Quality gate: min description length on targeted ticket.
+        if (rt.Config?.MinDescriptionLength is int minLen && firing.TicketId is not null)
+        {
+            var t = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+            if (t is not null && t.Description.Length < minLen)
+            {
+                _logger.LogInformation("Ticket #{Id} description too short ({Len}<{Min}) — skipping {Agent}",
+                    firing.TicketId, t.Description.Length, minLen, agentName);
+                return true;
+            }
+        }
+
+        // Dedup: avoid re-dispatch on same (agent, ticket) while a run is active.
+        if (firing.TicketId is not null
+            && _runs.ActiveForTicket(rt.Slug, firing.TicketId.Value).Any(r => r.AgentName == agentName))
+            return true;
+
+        // Concurrency group: one run at a time (unless group is null).
+        if (_runs.HasActiveInGroup(rt.Slug, group)) return true;
+
+        // Mutually exclusive groups must be idle.
+        if (a.MutuallyExclusiveWith.Count > 0 && _runs.HasActiveAny(rt.Slug, a.MutuallyExclusiveWith)) return true;
+
+        // All transient gates passed — let the trigger persist its "seen" marker.
+        await commitAsync();
+
+        var runCtx = new ClaudeRunContext
+        {
+            ProjectSlug = rt.Slug,
+            WorkspacePath = rt.Workspace!,
+            AgentName = agentName,
+            SkillFile = skillFile,
+            TicketId = firing.TicketId,
+            TicketTitle = firing.TicketTitle,
+            TicketStatus = firing.TicketStatus,
+            MaxTurns = a.MaxTurns,
+            ConcurrencyGroup = group,
+            Env = a.Env,
+            Model = a.Model,
+            ExtraContext = a.Context,
+        };
+        _sessions.SetLastDispatched(rt.Workspace!, agentName, DateTime.UtcNow);
+        if (firing.TicketId is not null)
+        {
+            try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get("ActAgentStarted", agentName), "automation"); }
+            catch { /* non-blocking */ }
+        }
+        state.LastRun = await _runner.RunAsync(runCtx, ct);
+
+        if (firing.TicketId is not null)
+        {
+            var statusKey = state.LastRun.Status switch
+            {
+                AgentRunStatus.Completed => "ActAgentCompleted",
+                AgentRunStatus.Failed    => "ActAgentFailed",
+                AgentRunStatus.Stopped   => "ActAgentStopped",
+                _                        => "ActAgentCompleted",
+            };
+            try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId.Value, _loc.Get(statusKey, agentName), "automation"); }
+            catch { /* non-blocking */ }
+        }
+
+        // Restore ticket status if agent failed/stopped and a prior moveTicketStatus changed it.
+        if (a.RestoreStatusOnFail
+            && state.LastRun.Status is AgentRunStatus.Failed or AgentRunStatus.Stopped
+            && state.StatusBeforeMove is not null && state.StatusAfterMove is not null
+            && firing.TicketId is not null)
+        {
+            try
+            {
+                var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId.Value);
+                if (ticket is not null
+                    && string.Equals(ticket.Status, state.StatusAfterMove, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(ticket.AssignedTo ?? "", state.AssigneeBeforeMove ?? "", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId.Value, state.StatusBeforeMove, "automation");
+                    _logger.LogInformation("Restored #{Id} to {Status} (run {Agent} failed)",
+                        firing.TicketId, state.StatusBeforeMove, agentName);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to restore ticket #{Id} status", firing.TicketId);
+            }
+        }
+        return false;
+    }
+
+    private async Task ExecuteMoveTicketStatusActionAsync(ProjectRuntime rt, TriggerFiring firing, MoveTicketStatusActionSpec m, ActionState state)
+    {
+        if (string.Equals(firing.TicketStatus, m.To, StringComparison.OrdinalIgnoreCase))
+            return; // already in target status
+        try
+        {
+            var ticketBefore = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
+            state.StatusBeforeMove = ticketBefore?.Status;
+            state.AssigneeBeforeMove = ticketBefore?.AssignedTo;
+            await _tickets.MoveTicketAsync(rt.Slug, firing.TicketId!.Value, m.To, "automation");
+            state.StatusAfterMove = m.To;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "moveTicketStatus failed for ticket #{Id} in project {Project}", firing.TicketId, rt.Slug); }
+    }
+
+    private async Task ExecuteSetLabelsActionAsync(ProjectRuntime rt, TriggerFiring firing, SetLabelsActionSpec s)
+    {
+        try
+        {
+            var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
+            if (ticket is null) return;
+            var currentNames = ticket.Labels.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in s.Add) currentNames.Add(name);
+            foreach (var name in s.Remove) currentNames.Remove(name);
+            var allLabels = await _labels.ListLabelsAsync(rt.Slug);
+            var newIds = allLabels.Where(l => currentNames.Contains(l.Name)).Select(l => l.Id).ToList();
+            await _tickets.SetTicketLabelsAsync(rt.Slug, firing.TicketId!.Value, newIds);
+            var parts = new List<string>();
+            if (s.Add.Count > 0) parts.Add(_loc.Get("ActLabelsAdded", string.Join(", ", s.Add)));
+            if (s.Remove.Count > 0) parts.Add(_loc.Get("ActLabelsRemoved", string.Join(", ", s.Remove)));
+            if (parts.Count > 0)
+                try { await _tickets.AddActivityAsync(rt.Slug, firing.TicketId!.Value, _loc.Get("ActLabelsChanged", string.Join(" / ", parts)), "automation"); }
+                catch { /* non-blocking */ }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "setLabels failed for ticket #{Id} in project {Project}", firing.TicketId, rt.Slug); }
+    }
+
+    private async Task ExecuteAddCommentActionAsync(ProjectRuntime rt, TriggerFiring firing, AddCommentActionSpec ac)
+    {
+        try
+        {
+            var content = ac.Content
+                .Replace("{ticketId}", firing.TicketId?.ToString() ?? "")
+                .Replace("{ticketTitle}", firing.TicketTitle ?? "");
+            if (content.Contains("{assignee}"))
+            {
+                var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
+                content = content.Replace("{assignee}", ticket?.AssignedTo ?? "");
+            }
+            await _tickets.AddCommentAsync(rt.Slug, firing.TicketId!.Value, content, ac.Author);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "addComment failed for ticket #{Id} in project {Project}", firing.TicketId, rt.Slug); }
+    }
+
+    private async Task ExecuteAssignTicketActionAsync(ProjectRuntime rt, TriggerFiring firing, AssignTicketActionSpec at)
+    {
+        try
+        {
+            var slug = at.Slug;
+            if (slug is not null && slug.Contains("{previousAssignee}"))
+            {
+                var ticket = await _tickets.GetTicketAsync(rt.Slug, firing.TicketId!.Value);
+                slug = slug.Replace("{previousAssignee}", ticket?.AssignedTo ?? "");
+            }
+            if (string.IsNullOrEmpty(slug))
+            {
+                // unassign
+                await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId!.Value, assignedTo: "", author: "automation");
+            }
+            else
+            {
+                var members = await _members.ListMembersAsync(rt.Slug);
+                if (!members.Any(m => string.Equals(m.Slug, slug, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogWarning("assignTicket: member '{Slug}' not found in project {Project}", slug, rt.Slug);
+                    return;
+                }
+                await _tickets.UpdateTicketAsync(rt.Slug, firing.TicketId!.Value, assignedTo: slug, author: "automation");
+            }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "assignTicket failed for ticket #{Id} in project {Project}", firing.TicketId, rt.Slug); }
+    }
+
+    private async Task ExecuteCommitAgentMemoryActionAsync(ProjectRuntime rt, CommitAgentMemoryActionSpec cm)
+    {
+        try
+        {
+            var memoryPath = Path.Combine(rt.Workspace!, ".agents", cm.Agent, "memory.md");
+            if (!File.Exists(memoryPath))
+            {
+                _logger.LogInformation("commitAgentMemory: no memory file found for {Agent} at {Path}", cm.Agent, memoryPath);
+                return;
+            }
+            var content = await File.ReadAllTextAsync(memoryPath);
+            var lineCount = content.Split('\n').Length;
+            var tempPath = memoryPath + ".tmp";
+            await File.WriteAllTextAsync(tempPath, content);
+            File.Move(tempPath, memoryPath, overwrite: true);
+            _logger.LogInformation("commitAgentMemory: persisted {Agent} memory ({Lines} lines)", cm.Agent, lineCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "commitAgentMemory: failed to persist memory for {Agent}", cm.Agent);
+        }
+    }
+
+    // Returns true when AbortOnFailure is set and the process exited with a non-zero code.
+    private async Task<bool> ExecutePowerShellAsync(ExecutePowerShellActionSpec spec, string workspacePath, CancellationToken ct)
+    {
+        try
+        {
+            string scriptArg;
+            if (!string.IsNullOrWhiteSpace(spec.ScriptFile))
+            {
+                var path = Path.IsPathRooted(spec.ScriptFile)
+                    ? spec.ScriptFile
+                    : Path.Combine(workspacePath, spec.ScriptFile);
+                scriptArg = $"-File \"{path}\"";
+            }
+            else
+            {
+                // Encode inline script as Base64 to avoid quoting issues.
+                var bytes = System.Text.Encoding.Unicode.GetBytes(spec.Script);
+                scriptArg = $"-EncodedCommand {Convert.ToBase64String(bytes)}";
+            }
+
+            var extraArgs = spec.Arguments.Count > 0
+                ? " -Args " + string.Join(",", spec.Arguments.Select(a => $"\"{a}\""))
+                : "";
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "pwsh",
+                Arguments = $"-NonInteractive -NoProfile {scriptArg}{extraArgs}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = workspacePath,
+            };
+            foreach (var (k, v) in spec.Env)
+                psi.Environment[k] = v;
+
+            using var proc = System.Diagnostics.Process.Start(psi)
+                ?? throw new InvalidOperationException("Failed to start pwsh process");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(spec.TimeoutSeconds));
+
+            var stdout = await proc.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderr = await proc.StandardError.ReadToEndAsync(cts.Token);
+            await proc.WaitForExitAsync(cts.Token);
+
+            var exitCode = proc.ExitCode;
+            _logger.LogInformation("executePowerShell exited {Code}. stdout={Stdout} stderr={Stderr}",
+                exitCode, stdout.Trim(), stderr.Trim());
+
+            if (exitCode != 0)
+            {
+                _logger.LogWarning("executePowerShell non-zero exit ({Code}); abortOnFailure={Abort}", exitCode, spec.AbortOnFailure);
+                return spec.AbortOnFailure;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("executePowerShell timed out after {Timeout}s", spec.TimeoutSeconds);
+            if (spec.AbortOnFailure) return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "executePowerShell failed");
+            if (spec.AbortOnFailure) return true;
+        }
+        return false;
     }
 
     private static Dictionary<string, ITrigger> BuildTriggers(AutomationConfig config)
