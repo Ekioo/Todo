@@ -119,13 +119,20 @@ public class TicketService
                 new List<SubTicketInfo>()))
             .ToListAsync();
 
-        // Build sub-ticket info for parent tickets
-        var childrenByParent = allTickets
-            .Where(t => t.ParentId is not null)
-            .GroupBy(t => t.ParentId!.Value)
-            .ToDictionary(g => g.Key, g => g.Select(t => new SubTicketInfo(t.Id, t.Title, t.Status, t.AssignedTo)).ToList());
+        // Load children for ALL returned parents, ignoring the status filter so that
+        // parents filtered by their own status still see children in other statuses.
+        var parentIds = allTickets.Select(t => t.Id).ToHashSet();
+        var childRows = parentIds.Count > 0
+            ? await db.Tickets
+                .Where(t => t.ParentId != null && parentIds.Contains(t.ParentId!.Value))
+                .Select(t => new { t.ParentId, Info = new SubTicketInfo(t.Id, t.Title, t.Status, t.AssignedTo) })
+                .ToListAsync()
+            : [];
+        var subsByParent = childRows
+            .GroupBy(x => x.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Info).ToList());
 
-        return allTickets.Select(t => childrenByParent.TryGetValue(t.Id, out var subs)
+        return allTickets.Select(t => subsByParent.TryGetValue(t.Id, out var subs)
             ? t with { SubTickets = subs }
             : t).ToList();
     }
