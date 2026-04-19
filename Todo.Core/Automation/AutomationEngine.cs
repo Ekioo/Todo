@@ -661,6 +661,11 @@ public sealed class AutomationEngine : BackgroundService
         catch (Exception ex) { _logger.LogWarning(ex, "assignTicket failed for ticket #{Id} in project {Project}", firing.TicketId, rt.Slug); }
     }
 
+    // Serializes in-process git operations (commitAgentMemory runs across multiple automations).
+    // External git activity (committer agent's claude CLI, owner commits) is outside this lock —
+    // we handle those races by retrying on index.lock transient failures.
+    private static readonly SemaphoreSlim _gitLock = new(1, 1);
+
     private async Task ExecuteCommitAgentMemoryActionAsync(ProjectRuntime rt, CommitAgentMemoryActionSpec cm, TriggerFiring? firing = null)
     {
         try
@@ -683,23 +688,76 @@ public sealed class AutomationEngine : BackgroundService
                 agent = agent.Replace("{assignee}", t.AssignedTo);
             }
 
-            var memoryPath = Path.Combine(rt.Workspace!, ".agents", agent, "memory.md");
-            if (!File.Exists(memoryPath))
+            var workspace = rt.Workspace!;
+            var memoryRel = $".agents/{agent}/memory.md";
+            var memoryAbs = Path.Combine(workspace, memoryRel.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(memoryAbs))
             {
-                _logger.LogInformation("commitAgentMemory: no memory file found for {Agent} at {Path}", agent, memoryPath);
+                _logger.LogInformation("commitAgentMemory: no memory file found for {Agent} at {Path}", agent, memoryAbs);
                 return;
             }
-            var content = await File.ReadAllTextAsync(memoryPath);
-            var lineCount = content.Split('\n').Length;
-            var tempPath = memoryPath + ".tmp";
-            await File.WriteAllTextAsync(tempPath, content);
-            File.Move(tempPath, memoryPath, overwrite: true);
-            _logger.LogInformation("commitAgentMemory: persisted {Agent} memory ({Lines} lines)", agent, lineCount);
+
+            // Only proceed if we're inside a git repo.
+            if (!Directory.Exists(Path.Combine(workspace, ".git")))
+            {
+                _logger.LogDebug("commitAgentMemory: workspace {Path} is not a git repo — skipping", workspace);
+                return;
+            }
+
+            await _gitLock.WaitAsync();
+            try
+            {
+                // Is the memory file dirty? (exit 0 = no changes, exit 1 = changes, >1 = error)
+                var diff = await RunGitAsync(workspace, $"diff --quiet --exit-code -- \"{memoryRel}\"");
+                if (diff.exitCode == 0)
+                {
+                    _logger.LogDebug("commitAgentMemory: {Agent} memory is clean, nothing to commit", agent);
+                    return;
+                }
+
+                var add = await RunGitAsync(workspace, $"add -- \"{memoryRel}\"");
+                if (add.exitCode != 0)
+                {
+                    _logger.LogWarning("commitAgentMemory: git add failed for {Agent}: {Err}", agent, add.stderr);
+                    return;
+                }
+
+                var msg = $"chore(memory): update {agent} memory";
+                var commit = await RunGitAsync(workspace, $"commit --no-verify -m \"{msg}\" -- \"{memoryRel}\"");
+                if (commit.exitCode != 0)
+                {
+                    _logger.LogWarning("commitAgentMemory: git commit failed for {Agent}: {Err}", agent, commit.stderr);
+                    return;
+                }
+
+                var lineCount = (await File.ReadAllTextAsync(memoryAbs)).Split('\n').Length;
+                _logger.LogInformation("commitAgentMemory: committed {Agent} memory ({Lines} lines)", agent, lineCount);
+            }
+            finally { _gitLock.Release(); }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "commitAgentMemory: failed to persist memory for {Agent}", cm.Agent);
+            _logger.LogWarning(ex, "commitAgentMemory: failed to commit memory for {Agent}", cm.Agent);
         }
+    }
+
+    private static async Task<(int exitCode, string stdout, string stderr)> RunGitAsync(string cwd, string args)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = args,
+            WorkingDirectory = cwd,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var proc = System.Diagnostics.Process.Start(psi)!;
+        var stdout = await proc.StandardOutput.ReadToEndAsync();
+        var stderr = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        return (proc.ExitCode, stdout, stderr);
     }
 
     // Returns true when AbortOnFailure is set and the process exited with a non-zero code.
