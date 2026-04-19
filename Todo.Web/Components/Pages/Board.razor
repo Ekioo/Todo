@@ -182,7 +182,14 @@ else
                                 {
                                     <div class="sub-ticket-indicator" @onclick="() => EnterSubKanban(ticket)" @onclick:stopPropagation title="@L["ViewSubTickets"]">
                                         <span class="sub-ticket-icon">&#128194;</span>
-                                        <span>@ticket.SubTickets.Count(s => s.Status == _columns.LastOrDefault()?.Name)/@ticket.SubTickets.Count</span>
+                                        @foreach (var subCol in _columns)
+                                        {
+                                            var cnt = ticket.SubTickets.Count(s => s.Status == subCol.Name);
+                                            if (cnt > 0)
+                                            {
+                                                <span class="sub-status-chip" style="--sc: @subCol.Color" title="@subCol.Name">@cnt</span>
+                                            }
+                                        }
                                     </div>
                                 }
                                 <div class="ticket-card-bottom">

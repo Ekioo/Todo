@@ -593,6 +593,20 @@ a:hover { color: var(--accent-hover); }
     color: var(--accent);
 }
 .sub-ticket-icon { font-size: 0.8rem; }
+.sub-status-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    padding: 0 4px;
+    height: 1.1rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--sc, #5a6a80);
+    background: color-mix(in srgb, var(--sc, #5a6a80) 15%, transparent);
+    line-height: 1;
+}
 
 /* Drop-target highlight (ticket-on-ticket) */
 .ticket-card.drop-target {
