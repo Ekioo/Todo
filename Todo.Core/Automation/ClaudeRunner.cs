@@ -295,6 +295,6 @@ public sealed class ClaudeRunner
             File.AppendAllText(Path.Combine(dir, "debug.log"),
                 $"[{DateTime.UtcNow:o}] {line}\n");
         }
-        catch { }
+        catch { /* best-effort debug log — disk errors must not crash the run */ }
     }
 }

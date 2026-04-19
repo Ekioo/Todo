@@ -182,9 +182,6 @@ public sealed class AgentRunRegistry
     public IEnumerable<AgentRun> ActiveForProject(string projectSlug) =>
         _runs.Values.Where(r => r.ProjectSlug == projectSlug && r.Status == AgentRunStatus.Running);
 
-    public IEnumerable<AgentRun> AllActive() =>
-        _runs.Values.Where(r => r.Status == AgentRunStatus.Running);
-
     public IEnumerable<AgentRun> ActiveForTicket(string projectSlug, int ticketId) =>
         _runs.Values.Where(r => r.ProjectSlug == projectSlug && r.TicketId == ticketId && r.Status == AgentRunStatus.Running);
 

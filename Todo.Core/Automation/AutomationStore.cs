@@ -92,8 +92,7 @@ public sealed class AutomationStore : IDisposable
 
     private sealed class ProjectEntry
     {
-        public ProjectEntry(string slug) { Slug = slug; }
-        public string Slug { get; }
+        public ProjectEntry(string slug) { }
         public string ConfigPath { get; set; } = "";
         public string WorkspacePath { get; set; } = "";
         public AutomationConfig? LastLoaded { get; set; }

@@ -4,7 +4,6 @@ using Markdig.Parsers;
 using Markdig.Renderers;
 using Markdig.Syntax.Inlines;
 using System.Globalization;
-using Todo.Core.Models;
 
 namespace Todo.Web.Extensions;
 

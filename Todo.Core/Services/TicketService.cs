@@ -470,10 +470,6 @@ public class TicketService
         _ => p.ToString()
     };
 
-    /// <summary>
-    /// Returns tickets where @handle appears in description or comments,
-    /// optionally filtered by date range.
-    /// </summary>
     public async Task AddActivityAsync(string projectSlug, int ticketId, string text, string author = "automation")
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
@@ -484,6 +480,10 @@ public class TicketService
         await db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Returns tickets where @handle appears in description or comments,
+    /// optionally filtered by date range.
+    /// </summary>
     public async Task<List<Ticket>> ListMentionedTicketsAsync(string projectSlug, string handle, DateTime? since = null, DateTime? until = null)
     {
         await using var db = _projectService.GetProjectDb(projectSlug);
