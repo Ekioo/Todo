@@ -2,7 +2,7 @@
   "automations": [
     {
       "id": "dispatch",
-      "name": "Dispatch — passer les tickets Todo en InProgress",
+      "name": "Dispatch \u2014 passer les tickets Todo en InProgress",
       "enabled": true,
       "trigger": {
         "type": "ticketInColumn",
@@ -31,7 +31,7 @@
     },
     {
       "id": "programmer-run",
-      "name": "Programmer — lancer l'agent",
+      "name": "Programmer \u2014 lancer l\u0027agent",
       "enabled": true,
       "trigger": {
         "type": "ticketInColumn",
@@ -58,7 +58,7 @@
     },
     {
       "id": "groomer",
-      "name": "Groomer — enrichir descriptions Backlog courtes",
+      "name": "Groomer \u2014 enrichir descriptions Backlog courtes",
       "enabled": true,
       "trigger": {
         "type": "interval",
@@ -88,7 +88,7 @@
     },
     {
       "id": "committer-on-done",
-      "name": "Committer — commit quand un ticket passe à Done",
+      "name": "Committer \u2014 commit quand un ticket passe \u00E0 Done",
       "enabled": true,
       "trigger": {
         "type": "statusChange",
@@ -111,7 +111,7 @@
     },
     {
       "id": "producer-run",
-      "name": "Producer — décomposer tickets assignés à producer",
+      "name": "Producer \u2014 d\u00E9composer tickets assign\u00E9s \u00E0 producer",
       "enabled": true,
       "trigger": {
         "type": "ticketInColumn",
@@ -138,7 +138,7 @@
     },
     {
       "id": "producer-on-subtick",
-      "name": "Producer — re-dispatch quand sous-tickets changent",
+      "name": "Producer \u2014 re-dispatch quand sous-tickets changent",
       "enabled": true,
       "trigger": {
         "type": "subTicketStatus",
@@ -160,7 +160,7 @@
     },
     {
       "id": "evaluator-on-done",
-      "name": "Evaluator — vérifier les tickets passés à Done",
+      "name": "Evaluator \u2014 v\u00E9rifier les tickets pass\u00E9s \u00E0 Done",
       "enabled": true,
       "trigger": {
         "type": "statusChange",
@@ -183,7 +183,7 @@
     },
     {
       "id": "qa-tester-run",
-      "name": "QA Tester — valider le travail en InProgress",
+      "name": "QA Tester \u2014 valider le travail en InProgress",
       "enabled": false,
       "trigger": {
         "type": "ticketInColumn",
@@ -210,7 +210,7 @@
     },
     {
       "id": "code-janitor-nightly",
-      "name": "Code Janitor — nettoyage périodique du codebase",
+      "name": "Code Janitor \u2014 nettoyage p\u00E9riodique du codebase",
       "enabled": true,
       "trigger": {
         "type": "interval",
@@ -241,16 +241,11 @@
       },
       "conditions": [
         {
-          "type": "ticketInColumn",
-          "columns": [
-            "InProgress"
-          ]
-        },
-        {
           "type": "allSubTicketsInStatus",
           "statuses": [
             "Done"
-          ]
+          ],
+          "negate": false
         }
       ],
       "actions": [
