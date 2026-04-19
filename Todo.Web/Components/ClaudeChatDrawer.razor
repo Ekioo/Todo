@@ -17,9 +17,26 @@
     <div class="chat-messages" @ref="_messagesRef">
         @foreach (var msg in _messages)
         {
-            <div class="chat-message chat-message-@msg.Role">
-                <div class="chat-bubble markdown-body">@((MarkupString)RenderMarkdown(msg.Text))</div>
-            </div>
+            if (msg.Role == "tool_use")
+            {
+                var toolMsg = (ToolCallMessage)msg;
+                <div class="chat-message chat-message-tool">
+                    <details class="tool-call-block">
+                        <summary class="tool-call-summary">
+                            <span class="tool-call-icon">⚙</span>
+                            <span class="tool-call-name">@toolMsg.ToolName</span>
+                            <span class="tool-call-preview">@toolMsg.Preview</span>
+                        </summary>
+                        <pre class="tool-call-detail">@toolMsg.Detail</pre>
+                    </details>
+                </div>
+            }
+            else
+            {
+                <div class="chat-message chat-message-@msg.Role">
+                    <div class="chat-bubble markdown-body">@((MarkupString)RenderMarkdown(msg.Text))</div>
+                </div>
+            }
         }
         @if (_loading)
         {
@@ -58,7 +75,9 @@
     private DotNetObjectReference<ClaudeChatDrawer>? _dotnetRef;
     private string? _activeStreamId;
 
-    private sealed record ChatMessage(string Role, string Text);
+    private record ChatMessage(string Role, string Text);
+    private sealed record ToolCallMessage(string ToolName, string Preview, string Detail)
+        : ChatMessage("tool_use", ToolName);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -130,18 +149,51 @@
     }
 
     [JSInvokable]
-    public Task ReceiveSse(string kind, string text)
+    public Task ReceiveSse(string kind, string text, string? detail = null)
     {
-        // FlattenJson produces "[assistant] <response text>" for assistant turn events
-        if (kind == "assistant")
+        if (kind == "tool_use" && !string.IsNullOrWhiteSpace(text))
         {
+            var preview = GetToolPreview(text, detail);
+            _messages.Add(new ToolCallMessage(text, preview, detail ?? "{}"));
+        }
+        else if (kind == "assistant")
+        {
+            // FlattenJson produces "[assistant] <response text>" for assistant turn events
+            // Skip if it only contains tool: references (those are emitted as separate tool_use events)
             const string prefix = "[assistant] ";
             var reply = text.StartsWith(prefix) ? text[prefix.Length..] : text;
-            if (!string.IsNullOrWhiteSpace(reply))
-                _messages.Add(new ChatMessage("assistant", reply.Trim()));
+            reply = reply.Trim();
+            if (!string.IsNullOrWhiteSpace(reply) && !reply.StartsWith("tool:"))
+                _messages.Add(new ChatMessage("assistant", reply));
         }
         return InvokeAsync(StateHasChanged);
     }
+
+    private static string GetToolPreview(string toolName, string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail) || detail == "{}") return "";
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(detail);
+            var root = doc.RootElement;
+            return toolName switch
+            {
+                "Bash" => Truncate(root.TryGetProperty("command", out var c) ? c.GetString() : null),
+                "Read" => Truncate(root.TryGetProperty("file_path", out var fp) ? fp.GetString() : null),
+                "Write" => Truncate(root.TryGetProperty("file_path", out var fp2) ? fp2.GetString() : null),
+                "Edit" => Truncate(root.TryGetProperty("file_path", out var fp3) ? fp3.GetString() : null),
+                "Glob" => Truncate(root.TryGetProperty("pattern", out var p) ? p.GetString() : null),
+                "Grep" => Truncate(root.TryGetProperty("pattern", out var gp) ? gp.GetString() : null),
+                "WebFetch" or "WebSearch" => Truncate(root.TryGetProperty("url", out var u) ? u.GetString()
+                    : root.TryGetProperty("query", out var q) ? q.GetString() : null),
+                _ => Truncate(root.EnumerateObject().FirstOrDefault().Value.GetString())
+            };
+        }
+        catch { return ""; }
+    }
+
+    private static string Truncate(string? s, int max = 80) =>
+        s is null ? "" : s.Length <= max ? s : s[..max] + "…";
 
     [JSInvokable]
     public Task StreamEnded()

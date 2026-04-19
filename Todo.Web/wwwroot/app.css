@@ -2611,3 +2611,55 @@ body.flow-dnd-active * { cursor: grabbing !important; }
 .chat-input-area button:disabled { background: #2a3040; color: #5a6a80; cursor: default; }
 .new-instruction-btn { background: #4a9eff22; color: #4a9eff; border-color: #4a9eff44; }
 .new-instruction-btn:hover { background: #4a9eff33; }
+
+/* ─── Tool call blocks in chat drawer ──────────────────────────────────── */
+.chat-message-tool { justify-content: flex-start; }
+.tool-call-block {
+    background: #1a1f2e;
+    border: 1px solid #2e3a50;
+    border-radius: 8px;
+    max-width: 90%;
+    overflow: hidden;
+    font-size: 0.85rem;
+}
+.tool-call-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    color: #8ab4f8;
+}
+.tool-call-summary::-webkit-details-marker { display: none; }
+.tool-call-summary::before {
+    content: "▶";
+    font-size: 0.6rem;
+    color: #5a7a9a;
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+details[open] .tool-call-summary::before { transform: rotate(90deg); }
+.tool-call-icon { font-size: 0.9rem; flex-shrink: 0; }
+.tool-call-name { font-weight: 600; color: #8ab4f8; flex-shrink: 0; }
+.tool-call-preview {
+    color: #6a8aaa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 30ch;
+}
+.tool-call-detail {
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    background: #11141b;
+    border-top: 1px solid #2e3a50;
+    color: #a0b4c8;
+    font-size: 0.78rem;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+}

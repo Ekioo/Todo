@@ -45,7 +45,7 @@ public sealed class AgentRun
     }
 }
 
-public sealed record StreamEvent(DateTime At, string Kind, string Text);
+public sealed record StreamEvent(DateTime At, string Kind, string Text, string? Detail = null);
 
 /// <summary>Serializable snapshot of a completed AgentRun for disk persistence.</summary>
 public sealed class AgentRunSnapshot

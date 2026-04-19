@@ -192,6 +192,22 @@ public sealed class ClaudeRunner
             {
                 using var doc = JsonDocument.Parse(line);
                 var kind = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() ?? "event" : "event";
+                // For assistant message events, emit separate tool_use events for each tool call in content
+                if (kind == "assistant" &&
+                    doc.RootElement.TryGetProperty("message", out var msg) &&
+                    msg.TryGetProperty("content", out var content) &&
+                    content.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var part in content.EnumerateArray())
+                    {
+                        if (part.TryGetProperty("type", out var ptype) && ptype.GetString() == "tool_use")
+                        {
+                            var toolName = part.TryGetProperty("name", out var n) ? n.GetString() ?? "tool" : "tool";
+                            var toolInput = part.TryGetProperty("input", out var inp) ? inp.ToString() : "{}";
+                            run.Push(new StreamEvent(DateTime.UtcNow, "tool_use", toolName, toolInput));
+                        }
+                    }
+                }
                 run.Push(new StreamEvent(DateTime.UtcNow, kind, FlattenJson(doc.RootElement)));
             }
             catch

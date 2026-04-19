@@ -68,9 +68,9 @@ export function start(dotnetRef, url) {
         if (!_ref) return;
         try {
             const data = JSON.parse(ev.data);
-            _ref.invokeMethodAsync("ReceiveSse", data.kind ?? "event", data.text ?? "");
+            _ref.invokeMethodAsync("ReceiveSse", data.kind ?? "event", data.text ?? "", data.detail ?? null);
         } catch {
-            _ref.invokeMethodAsync("ReceiveSse", "raw", ev.data);
+            _ref.invokeMethodAsync("ReceiveSse", "raw", ev.data, null);
         }
     };
     _es.addEventListener("end", () => {
