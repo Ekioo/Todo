@@ -1,0 +1,23 @@
+{
+  "Save": "Enregistrer",
+  "Cancel": "Annuler",
+  "Delete": "Supprimer",
+  "Confirm": "Confirmer",
+  "Close": "Fermer",
+  "Add": "+ Ajouter",
+  "Edit": "Modifier",
+  "Create": "Créer",
+  "Name": "Nom",
+  "Color": "Couleur",
+  "Order": "Ordre",
+  "Type": "Type",
+  "Saved": "Enregistré.",
+  "Error": "Erreur",
+  "Language": "Langue",
+  "LangFr": "Français",
+  "LangEn": "English",
+  "DropHere": "Déposer ici",
+  "Board": "Tableau",
+  "Automations": "Automatisations",
+  "ProjectNotFound": "Projet introuvable."
+}

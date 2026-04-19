@@ -703,7 +703,6 @@ else
     private string _newLabelColor = "#6366f1";
 
     // Column management
-    private bool _showAddColumn = false;
     private string _newColumnName = "";
     private string _newColumnColor = "#5a6a80";
     private string _deleteColumnMoveTo = "";
@@ -752,10 +751,6 @@ else
     private string _managerNewMemberName = "";
 
     // Settings popup
-
-
-    // Inline comment
-    private bool _addingComment = false;
 
     // Sub-ticket / sub-kanban
     private int? _subKanbanParentId = null;
@@ -881,7 +876,6 @@ else
                 if (_selectedTicket is not null && !string.IsNullOrWhiteSpace(text))
                 {
                     await TicketService.AddCommentAsync(Slug, _selectedTicket.Id, text.Trim());
-                    _addingComment = false;
                     _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
                 }
                 break;
@@ -1411,7 +1405,6 @@ else
         _showPriorityPicker = false;
         _labelSearch = "";
         _labelDropdownOpen = false;
-        _addingComment = false;
         if (_subKanbanParentId is not null)
             Navigation.NavigateTo($"/board/{Slug}/sub/{_subKanbanParentId}", replace: true);
         else
@@ -1438,7 +1431,6 @@ else
         if (_selectedTicket is null || string.IsNullOrWhiteSpace(_newComment)) return;
         await TicketService.AddCommentAsync(Slug, _selectedTicket.Id, _newComment.Trim());
         _newComment = "";
-        _addingComment = false;
         _selectedTicket = await TicketService.GetTicketAsync(Slug, _selectedTicket.Id);
         await RefreshTicketsAndTouch();
     }
@@ -1446,7 +1438,6 @@ else
     private void CancelComment()
     {
         _newComment = "";
-        _addingComment = false;
     }
 
     private void StartNewComment()
@@ -1517,7 +1508,6 @@ else
         _columns = await ColumnService.ListColumnsAsync(Slug);
         _newColumnName = "";
         _newColumnColor = "#5a6a80";
-        _showAddColumn = false;
     }
 
     private void StartDeleteColumn(int columnId)

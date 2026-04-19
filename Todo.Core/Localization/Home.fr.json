@@ -1,0 +1,10 @@
+{
+  "HomeTitle": "Todo - Projets",
+  "Projects": "Projets",
+  "NewProjectPlaceholder": "Nom du nouveau projet...",
+  "DeleteProjectConfirm": "Supprimer le projet",
+  "DeleteProjectWarning": "Tous les tickets et données associés seront définitivement supprimés.",
+  "Pause": "Mettre en pause",
+  "Resume": "Reprendre",
+  "Paused": "En pause"
+}

@@ -1,0 +1,23 @@
+{
+  "Save": "Save",
+  "Cancel": "Cancel",
+  "Delete": "Delete",
+  "Confirm": "Confirm",
+  "Close": "Close",
+  "Add": "+ Add",
+  "Edit": "Edit",
+  "Create": "Create",
+  "Name": "Name",
+  "Color": "Color",
+  "Order": "Order",
+  "Type": "Type",
+  "Saved": "Saved.",
+  "Error": "Error",
+  "Language": "Language",
+  "LangFr": "Français",
+  "LangEn": "English",
+  "DropHere": "Drop here",
+  "Board": "Board",
+  "Automations": "Automations",
+  "ProjectNotFound": "Project not found."
+}
