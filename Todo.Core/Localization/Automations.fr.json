@@ -33,6 +33,7 @@
   "CondTicketAge": "{0} {1} {2}h",
   "CondHasParentTrue": "sous-ticket",
   "CondHasParentFalse": "racine",
+  "CondAllSubTicketsInStatus": "tous sous-tickets ∈ [{0}]",
   "CondTicketCountInColumn": "{0} tickets [{1}] {2} {3}",
   "ActionMoveTo": "→ {0}",
   "ActionSetLabelsDesc": "+[{0}] −[{1}]",

@@ -7,6 +7,8 @@
   "CondTypeAssignedTo": "Assigné à",
   "CondTypeTicketAge": "Âge du ticket",
   "CondTypeHasParent": "Hiérarchie (racine/sous-ticket)",
+  "CondTypeAllSubTicketsInStatus": "Tous les sous-tickets dans statut",
+  "AllSubTicketsStatusesLabel": "Statuts des sous-tickets (un ou plusieurs)",
   "CondTypeTicketCountInColumn": "Comptage de tickets",
   "PalCondTicketCountInColumn": "Comptage de tickets",
   "PalCondTicketCountInColumnHint": "Compte les tickets d'un membre dans une colonne et compare à une valeur seuil",
