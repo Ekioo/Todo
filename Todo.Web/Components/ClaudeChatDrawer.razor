@@ -1,5 +1,6 @@
 @using Todo.Core.Automation
 @using Todo.Web.Services
+@using Markdig
 @inject AgentRunsState RunsState
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -17,7 +18,7 @@
         @foreach (var msg in _messages)
         {
             <div class="chat-message chat-message-@msg.Role">
-                <div class="chat-bubble">@msg.Text</div>
+                <div class="chat-bubble markdown-body">@((MarkupString)RenderMarkdown(msg.Text))</div>
             </div>
         }
         @if (_loading)
@@ -185,6 +186,9 @@
             try { await _sseModule.DisposeAsync(); } catch { }
         }
     }
+
+    private static string RenderMarkdown(string text) =>
+        Markdig.Markdown.ToHtml(text, new MarkdownPipelineBuilder().UseAdvancedExtensions().Build());
 
     private sealed record ChatStartResponse(string RunId);
 }
