@@ -10,6 +10,8 @@ public partial class ProjectService
 {
     private readonly string _dataDir;
     private readonly string _registryPath;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private bool _dbInitialized;
 
     public string DataDir => _dataDir;
 
@@ -20,19 +22,31 @@ public partial class ProjectService
         Directory.CreateDirectory(dataDir);
     }
 
-    private static async Task EnsureProjectColumnsAsync(RegistryDbContext db)
+    private async Task EnsureRegistryInitializedAsync()
     {
-        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN WorkspacePath TEXT NULL"); }
-        catch { /* column already exists */ }
-        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN IsPaused INTEGER NOT NULL DEFAULT 0"); }
-        catch { /* column already exists */ }
+        if (_dbInitialized) return;
+        await _initLock.WaitAsync();
+        try
+        {
+            if (_dbInitialized) return;
+            await using var db = new RegistryDbContext(_registryPath);
+            await db.Database.EnsureCreatedAsync();
+            try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN WorkspacePath TEXT NULL"); }
+            catch { /* column already exists */ }
+            try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Projects ADD COLUMN IsPaused INTEGER NOT NULL DEFAULT 0"); }
+            catch { /* column already exists */ }
+            _dbInitialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task<List<Project>> ListProjectsAsync()
     {
+        await EnsureRegistryInitializedAsync();
         await using var db = new RegistryDbContext(_registryPath);
-        await db.Database.EnsureCreatedAsync();
-        await EnsureProjectColumnsAsync(db);
         return await db.Projects.OrderBy(p => p.Name).ToListAsync();
     }
 
@@ -41,9 +55,8 @@ public partial class ProjectService
         var slug = SlugRegex().Replace(name.ToLowerInvariant(), "-").Trim('-');
         if (string.IsNullOrEmpty(slug)) slug = "project";
 
+        await EnsureRegistryInitializedAsync();
         await using var registry = new RegistryDbContext(_registryPath);
-        await registry.Database.EnsureCreatedAsync();
-        await EnsureProjectColumnsAsync(registry);
 
         // Ensure unique slug
         var existing = await registry.Projects.AnyAsync(p => p.Slug == slug);
@@ -60,6 +73,7 @@ public partial class ProjectService
 
         // Create the project database
         var projectDbPath = GetProjectDbPath(slug);
+        Directory.CreateDirectory(Path.GetDirectoryName(projectDbPath)!);
         await using var projectDb = new TodoDbContext(projectDbPath);
         await projectDb.Database.EnsureCreatedAsync();
 
@@ -68,17 +82,15 @@ public partial class ProjectService
 
     public async Task<Project?> GetProjectAsync(string slug)
     {
+        await EnsureRegistryInitializedAsync();
         await using var db = new RegistryDbContext(_registryPath);
-        await db.Database.EnsureCreatedAsync();
-        await EnsureProjectColumnsAsync(db);
         return await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
     }
 
     public async Task<Project?> TogglePauseAsync(string slug)
     {
+        await EnsureRegistryInitializedAsync();
         await using var db = new RegistryDbContext(_registryPath);
-        await db.Database.EnsureCreatedAsync();
-        await EnsureProjectColumnsAsync(db);
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
         if (project is null) return null;
         project.IsPaused = !project.IsPaused;
@@ -88,9 +100,8 @@ public partial class ProjectService
 
     public async Task<Project?> UpdateProjectAsync(string slug, string? workspacePath)
     {
+        await EnsureRegistryInitializedAsync();
         await using var db = new RegistryDbContext(_registryPath);
-        await db.Database.EnsureCreatedAsync();
-        await EnsureProjectColumnsAsync(db);
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
         if (project is null) return null;
         project.WorkspacePath = string.IsNullOrWhiteSpace(workspacePath) ? null : workspacePath.Trim();
@@ -105,8 +116,8 @@ public partial class ProjectService
 
     public async Task<bool> DeleteProjectAsync(string slug)
     {
+        await EnsureRegistryInitializedAsync();
         await using var registry = new RegistryDbContext(_registryPath);
-        await registry.Database.EnsureCreatedAsync();
         var project = await registry.Projects.FirstOrDefaultAsync(p => p.Slug == slug);
         if (project is null) return false;
         registry.Projects.Remove(project);
