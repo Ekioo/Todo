@@ -1,0 +1,177 @@
+@using KittyClaw.Core.Automation
+@inject LocalizationService L
+
+<div class="node-editor">
+    <label>@L["ActionType"]
+        <select value="@CurrentType" @onchange="OnTypeChanged">
+            <option value="runAgent">@L["ActionRunAgent"]</option>
+            <option value="moveTicketStatus">@L["ActionMoveTicket"]</option>
+            <option value="setLabels">@L["ActionSetLabels"]</option>
+            <option value="assignTicket">@L["ActionAssignTicket"]</option>
+            <option value="addComment">@L["ActionAddComment"]</option>
+            <option value="commitAgentMemory">@L["ActionCommitAgentMemory"]</option>
+            <option value="executePowerShell">@L["ActionExecutePowerShell"]</option>
+        </select>
+    </label>
+
+    @switch (Action)
+    {
+        case RunAgentActionSpec s:
+            <label>@L["Agent"]
+                <select value="@s.Agent" @onchange="e => s.Agent = (string)e.Value!">
+                    @foreach (var m in Members) { <option value="@m">@m</option> }
+                    @if (!Members.Contains(s.Agent) && !string.IsNullOrEmpty(s.Agent))
+                    {
+                        <option value="@s.Agent">@s.Agent @L["ModelCustom"]</option>
+                    }
+                </select>
+            </label>
+            <label>@L["MaxTurns"]
+                <input type="number" @bind="s.MaxTurns" />
+            </label>
+            <label>@L["ConcurrencyGroup"]
+                <input placeholder="@L["ConcurrencyPlaceholder"]" value="@(s.ConcurrencyGroup ?? "")"
+                       @onchange="e => s.ConcurrencyGroup = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!" />
+            </label>
+            <label>@L["MutuallyExclusive"]
+                <input value="@JoinGroups(s.MutuallyExclusiveWith)"
+                       @onchange="e => s.MutuallyExclusiveWith = SplitGroups((string?)e.Value)" />
+            </label>
+            <label>@L["ClaudeModel"]
+                <select value="@(s.Model ?? "")" @onchange="e => s.Model = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!">
+                    <option value="">@L["ModelDefault"]</option>
+                    @foreach (var m in DefaultModels)
+                    {
+                        <option value="@m">@m</option>
+                    }
+                    @if (!string.IsNullOrEmpty(s.Model) && !DefaultModels.Contains(s.Model))
+                    {
+                        <option value="@s.Model">@s.Model @L["ModelCustom"]</option>
+                    }
+                </select>
+            </label>
+            break;
+        case MoveTicketStatusActionSpec s:
+            <label>@L["NewColumn"]
+                <select @bind="s.To">
+                    @foreach (var c in Columns) { <option value="@c">@c</option> }
+                </select>
+            </label>
+            break;
+        case SetLabelsActionSpec s:
+            <label>@L["LabelsToAdd"]
+                <input placeholder="@L["LabelsCsvPlaceholder"]" value="@JoinGroups(s.Add)"
+                       @onchange="e => s.Add = SplitGroups((string?)e.Value)" />
+            </label>
+            <label>@L["LabelsToRemove"]
+                <input placeholder="@L["LabelsCsvPlaceholder"]" value="@JoinGroups(s.Remove)"
+                       @onchange="e => s.Remove = SplitGroups((string?)e.Value)" />
+            </label>
+            break;
+        case AssignTicketActionSpec s:
+            <label>@L["AssignTo"]
+                <select value="@(s.Slug ?? "")" @onchange="e => s.Slug = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!">
+                    <option value="">— @L["Nobody"] —</option>
+                    @foreach (var m in Members) { <option value="@m">@m</option> }
+                    <option value="{previousAssignee}">{previousAssignee}</option>
+                </select>
+            </label>
+            break;
+        case AddCommentActionSpec s:
+            <label>@L["CommentContent"]
+                <textarea @bind="s.Content" placeholder="@L["CommentContentPlaceholder"]"></textarea>
+            </label>
+            <label>@L["CommentAuthor"]
+                <select @bind="s.Author">
+                    @foreach (var m in Members) { <option value="@m">@m</option> }
+                </select>
+            </label>
+            break;
+        case CommitAgentMemoryActionSpec s:
+            <label>@L["Agent"]
+                <select value="@s.Agent" @onchange="e => s.Agent = (string)e.Value!">
+                    @foreach (var m in Members) { <option value="@m">@m</option> }
+                    @if (!Members.Contains(s.Agent) && !string.IsNullOrEmpty(s.Agent))
+                    {
+                        <option value="@s.Agent">@s.Agent @L["ModelCustom"]</option>
+                    }
+                </select>
+            </label>
+            break;
+        case ExecutePowerShellActionSpec s:
+            <label>@L["PsScript"]
+                <textarea @bind="s.Script" placeholder="@L["PsScriptPlaceholder"]" rows="5"></textarea>
+            </label>
+            <label>@L["PsScriptFile"]
+                <input placeholder="@L["PsScriptFilePlaceholder"]" value="@(s.ScriptFile ?? "")"
+                       @onchange="e => s.ScriptFile = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!" />
+            </label>
+            <label>@L["PsArguments"]
+                <input placeholder="@L["PsArgumentsPlaceholder"]" value="@JoinGroups(s.Arguments)"
+                       @onchange="e => s.Arguments = SplitGroups((string?)e.Value)" />
+            </label>
+            <label>@L["PsTimeout"]
+                <input type="number" @bind="s.TimeoutSeconds" />
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="s.AbortOnFailure" />
+                @L["PsAbortOnFailure"]
+            </label>
+            break;
+    }
+
+    <div class="node-editor-actions">
+        <button class="delete-btn" @onclick="OnDelete">@L["DeleteAction"]</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public ActionSpec Action { get; set; } = default!;
+    [Parameter] public List<string> Skills { get; set; } = new();
+    [Parameter] public List<string> Columns { get; set; } = new();
+    [Parameter] public List<string> Members { get; set; } = new();
+    [Parameter] public EventCallback<ActionSpec> OnReplace { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private static readonly List<string> DefaultModels = new()
+    {
+        "claude-opus-4-7",
+        "claude-opus-4-7-1m",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+    };
+
+    private string CurrentType => Action switch
+    {
+        RunAgentActionSpec => "runAgent",
+        MoveTicketStatusActionSpec => "moveTicketStatus",
+        SetLabelsActionSpec => "setLabels",
+        AssignTicketActionSpec => "assignTicket",
+        AddCommentActionSpec => "addComment",
+        CommitAgentMemoryActionSpec => "commitAgentMemory",
+        ExecutePowerShellActionSpec => "executePowerShell",
+        _ => "runAgent",
+    };
+
+    private static string JoinGroups(List<string> items) => string.Join(", ", items);
+    private static List<string> SplitGroups(string? value) =>
+        (value ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+    private async Task OnTypeChanged(ChangeEventArgs e)
+    {
+        ActionSpec spec = (string?)e.Value switch
+        {
+            "runAgent" => new RunAgentActionSpec { Agent = Members.FirstOrDefault() ?? "producer" },
+            "moveTicketStatus" => new MoveTicketStatusActionSpec { To = Columns.FirstOrDefault() ?? "Todo" },
+            "setLabels" => new SetLabelsActionSpec(),
+            "assignTicket" => new AssignTicketActionSpec(),
+            "addComment" => new AddCommentActionSpec(),
+            "commitAgentMemory" => new CommitAgentMemoryActionSpec { Agent = Members.FirstOrDefault() ?? "programmer" },
+            "executePowerShell" => new ExecutePowerShellActionSpec(),
+            _ => new RunAgentActionSpec { Agent = Members.FirstOrDefault() ?? "producer" },
+        };
+        await OnReplace.InvokeAsync(spec);
+    }
+}

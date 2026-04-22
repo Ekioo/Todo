@@ -28,7 +28,7 @@ appsettings.Development.json
 *.db
 *.db-shm
 *.db-wal
-Todo.Web/data/
+KittyClaw.Web/data/
 
 # OS
 .DS_Store

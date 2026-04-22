@@ -1,4 +1,4 @@
-# Todo
+# KittyClaw
 
 A kanban board that **orchestrates agentic projects**. Each column is a workflow stage (`Backlog`, `Todo`, `InProgress`, `Review`, `Done`, `Blocked`). Each project has members that can be human owners or **LLM agents** (programmer, groomer, producer, qa-tester, committer, code-janitor, evaluator). A background `AutomationEngine` dispatches these agents based on triggers (column changes, comments, intervals, git commits, …), running them as `claude` CLI subprocesses whose output streams into an in-app drawer.
 
@@ -22,7 +22,7 @@ On first launch an onboarding popup detects whether `claude` and `git` are avail
 ### Run
 
 ```bash
-cd Todo.Web
+cd KittyClaw.Web
 dotnet run --launch-profile http
 ```
 
@@ -44,11 +44,11 @@ From the home page, type a name and click **Create**. A popup asks you to set a 
 4. Create a member for each agent slug found in the template.
 5. Navigate to the board.
 
-The workspace folder itself is never deleted by Todo, even when you delete a project.
+The workspace folder itself is never deleted by KittyClaw, even when you delete a project.
 
 ### Data Storage
 
-All Todo data is stored locally in `%APPDATA%/TodoApp/`:
+All KittyClaw data is stored locally in `%APPDATA%/KittyClaw/`:
 
 - `registry.db` — project registry
 - `projects/{slug}.db` — per-project database (tickets, comments, labels, columns, members)
@@ -62,9 +62,9 @@ Per-project agent state lives **in the workspace**: `<workspace>/.agents/{agent}
 
 | Project | Description |
 |---|---|
-| **Todo.Core** | Domain models, EF Core contexts, services, automation engine, embedded `.agents/` template |
-| **Todo.Core.Tests** | xUnit tests (conditions, triggers, signals, JSON polymorphism) |
-| **Todo.Web** | Blazor Server UI + REST API |
+| **KittyClaw.Core** | Domain models, EF Core contexts, services, automation engine, embedded `.agents/` template |
+| **KittyClaw.Core.Tests** | xUnit tests (conditions, triggers, signals, JSON polymorphism) |
+| **KittyClaw.Web** | Blazor Server UI + REST API |
 
 ## API
 

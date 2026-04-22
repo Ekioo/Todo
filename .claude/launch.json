@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "todo-web",
+      "name": "kittyclaw-web",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["watch", "--project", "Todo.Web", "--non-interactive"],
+      "runtimeArgs": ["watch", "--project", "KittyClaw.Web", "--non-interactive"],
       "port": 5230
     }
   ]

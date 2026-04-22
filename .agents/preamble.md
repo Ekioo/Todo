@@ -11,7 +11,7 @@ At the end of every run, update the memory file: add new lessons with [+1], adju
 
 All content you produce — commit messages, memory updates, agent-to-agent notes — MUST be written in **English**. This includes any text in `.agents/**` and git commit messages.
 
-## Todo API
+## KittyClaw API
 
 The full and up-to-date API documentation is available at:
 http://localhost:5230/api/docs
