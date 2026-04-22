@@ -30,7 +30,11 @@
     <EmbeddedResource Include="..\.agents\**\memory.md">
       <LogicalName>Todo.Core.AgentsTemplate/%(RecursiveDir)memory.md</LogicalName>
       <WithCulture>false</WithCulture>
-    </EmbeddedResource>    
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\.agents-root\**\*.*">
+      <LogicalName>Todo.Core.AgentsTemplateRoot/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

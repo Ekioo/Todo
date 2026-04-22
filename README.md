@@ -1,18 +1,23 @@
 # Todo
 
-A kanban board for managing projects with tickets, columns, labels, and activity tracking — designed to be driven by AI agents via its API.
+A kanban board that **orchestrates agentic projects**. Each column is a workflow stage (`Backlog`, `Todo`, `InProgress`, `Review`, `Done`, `Blocked`). Each project has members that can be human owners or **LLM agents** (programmer, groomer, producer, qa-tester, committer, code-janitor, evaluator). A background `AutomationEngine` dispatches these agents based on triggers (column changes, comments, intervals, git commits, …), running them as `claude` CLI subprocesses whose output streams into an in-app drawer.
 
 ## Tech Stack
 
 - **.NET 10** / **Blazor Server** (interactive SSR)
 - **SQLite** via Entity Framework Core (one DB per project)
 - **OpenAPI** with auto-generated Markdown docs
+- External: **[Claude Code CLI](https://docs.claude.com/en/docs/claude-code/overview)** + **[Git](https://git-scm.com/downloads)** (required on PATH for agent dispatch and auto-commits)
 
 ## Getting Started
 
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Claude Code CLI](https://docs.claude.com/en/docs/claude-code/overview) — `claude` on your PATH
+- [Git](https://git-scm.com/downloads) — `git` on your PATH
+
+On first launch an onboarding popup detects whether `claude` and `git` are available. You can continue without them, but agent runs and auto-commits will fail until they are installed and on the PATH.
 
 ### Run
 
@@ -29,32 +34,50 @@ For hot reload during development:
 dotnet watch --launch-profile http
 ```
 
+### Creating a project
+
+From the home page, type a name and click **Create**. A popup asks you to set a workspace folder (absolute path to a repo/folder) and offers to create it if missing. Click **Initialize** to:
+
+1. Create the project registry entry + per-project SQLite DB.
+2. Copy the agent template (`.agents/preamble.md`, `.agents/{agent}/SKILL.md`, empty `memory.md`, `automations.json`) into `<workspace>/.agents/`.
+3. Run `git init` if the workspace is not already a git repo (skipped if `git` isn't installed).
+4. Create a member for each agent slug found in the template.
+5. Navigate to the board.
+
+The workspace folder itself is never deleted by Todo, even when you delete a project.
+
 ### Data Storage
 
-All data is stored locally in `%APPDATA%/TodoApp/`:
+All Todo data is stored locally in `%APPDATA%/TodoApp/`:
 
 - `registry.db` — project registry
 - `projects/{slug}.db` — per-project database (tickets, comments, labels, columns, members)
 - `uploads/` — uploaded images
+- `runs/{runId}.json` — agent run snapshots (events, status, exit code)
+- `settings.json` — language + onboarding flag
+
+Per-project agent state lives **in the workspace**: `<workspace>/.agents/{agent}/memory.md`, `<workspace>/.agents/channel/` (session state), etc.
 
 ## Project Structure
 
 | Project | Description |
 |---|---|
-| **Todo.Core** | Domain models, EF Core contexts, and business services |
+| **Todo.Core** | Domain models, EF Core contexts, services, automation engine, embedded `.agents/` template |
+| **Todo.Core.Tests** | xUnit tests (conditions, triggers, signals, JSON polymorphism) |
 | **Todo.Web** | Blazor Server UI + REST API |
 
 ## API
 
-All endpoints are under `/api`. See [API.md](API.md) for full documentation.
+All endpoints are under `/api`. The documentation is auto-generated from the live OpenAPI spec:
 
-OpenAPI spec available at `GET /openapi/v1.json` and human-readable docs at `GET /api/docs`.
+- Human-readable Markdown: `GET http://localhost:5230/api/docs`
+- Machine-readable JSON: `GET http://localhost:5230/openapi/v1.json`
 
 ## For AI Agents
 
 This app is designed to be operated by AI agents through its REST API. Here's how to get started:
 
-1. **Read [API.md](API.md)** — it contains every endpoint, request/response examples, and model schemas.
+1. **Read the live API docs** at `http://localhost:5230/api/docs` — every endpoint, request/response example, and schema, always up to date with the running server.
 2. **Identify yourself** — use `"agent:{your-name}"` as the `author` / `createdBy` field (e.g. `"agent:claude"`). The human user is `"owner"`.
 3. **Discover the board** — call `GET /api/projects` first, then `GET /api/projects/{slug}/columns` to learn the workflow stages and `GET /api/projects/{slug}/members` for assignable members.
 4. **Use the right status** — ticket statuses must match existing column names. Fetch columns before moving tickets.
@@ -71,14 +94,27 @@ This app is designed to be operated by AI agents through its REST API. Here's ho
 
 ## UI Features
 
+- Onboarding popup on first launch with Claude Code + Git detection
+- Project creation popup with workspace selection + one-click agent template initialization
 - Kanban board with drag-and-drop
 - Ticket detail panel with comments and activity timeline
+- Live agent run drawer (SSE stream of Claude Code output, steer + stop controls)
+- New-instruction chat drawer to send an ad-hoc prompt to an agent
+- Automations page: list, enable/disable, edit (triggers / conditions / actions), reload from disk, re-initialize agent template
 - Markdown rendering with `@mention` and `#ticket` reference support
 - Advanced search syntax: `#42`, `@owner`, `>date`, `priority:critical`, `label:bug`, `by:owner`
 - Sub-tickets with parent/child relationships and progress tracking
 - Column management (create, reorder, customize colors)
 - Label and member management
 - Image upload in descriptions and comments
+
+## Automation model
+
+- **Triggers**: `interval`, `ticketInColumn`, `statusChange`, `subTicketStatus`, `ticketCommentAdded`, `gitCommit`, `boardIdle`, `agentInactivity`.
+- **Conditions**: `ticketInColumn`, `ticketCountInColumn`, `fieldLength`, `priority`, `labels`, `assignedTo`, `hasParent`, `allSubTicketsInStatus`, `ticketAge`.
+- **Actions**: `runAgent`, `moveTicketStatus`, `setLabels`, `assignTicket`, `addComment`, `commitAgentMemory`, `executePowerShell`.
+- `{assignee}` placeholder in `runAgent.agent` / `runAgent.concurrencyGroup` resolves from the firing ticket's `assignedTo`.
+- Every `runAgent` should be followed by `commitAgentMemory` to auto-commit the agent's `memory.md` changes.
 
 ---
 

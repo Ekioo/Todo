@@ -5,29 +5,32 @@ namespace Todo.Core.Services;
 
 public sealed class AgentsTemplateService
 {
-    private const string ResourcePrefix = "Todo.Core.AgentsTemplate/";
+    private const string AgentsPrefix = "Todo.Core.AgentsTemplate/";
+    private const string RootPrefix = "Todo.Core.AgentsTemplateRoot/";
     private readonly Assembly _assembly = typeof(AgentsTemplateService).Assembly;
 
-    public IReadOnlyList<string> RelativePaths()
+    public IReadOnlyList<string> RelativePaths() => EnumerateWithPrefix(AgentsPrefix);
+    public IReadOnlyList<string> RootRelativePaths() => EnumerateWithPrefix(RootPrefix);
+
+    private IReadOnlyList<string> EnumerateWithPrefix(string prefix)
     {
         var names = _assembly.GetManifestResourceNames();
         var list = new List<string>();
         foreach (var n in names)
         {
-            if (n.StartsWith(ResourcePrefix, StringComparison.Ordinal))
-                list.Add(n.Substring(ResourcePrefix.Length).Replace('\\', '/'));
+            if (n.StartsWith(prefix, StringComparison.Ordinal))
+                list.Add(n.Substring(prefix.Length).Replace('\\', '/'));
         }
         list.Sort(StringComparer.Ordinal);
         return list;
     }
 
-    public byte[] ReadAsset(string relativePath)
+    private byte[] ReadAsset(string prefix, string relativePath)
     {
-        var normalized = relativePath.Replace('/', '\\');
         var allNames = _assembly.GetManifestResourceNames();
-        var name = ResourcePrefix + normalized;
+        var name = prefix + relativePath.Replace('/', '\\');
         if (!allNames.Contains(name))
-            name = ResourcePrefix + relativePath.Replace('\\', '/');
+            name = prefix + relativePath.Replace('\\', '/');
         using var s = _assembly.GetManifestResourceStream(name)
             ?? throw new InvalidOperationException($"Embedded asset not found: {name}");
         using var ms = new MemoryStream();
@@ -53,6 +56,11 @@ public sealed class AgentsTemplateService
         foreach (var rel in RelativePaths())
         {
             var dest = Path.Combine(workspacePath, ".agents", rel.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(dest)) conflicts.Add(".agents/" + rel);
+        }
+        foreach (var rel in RootRelativePaths())
+        {
+            var dest = Path.Combine(workspacePath, rel.Replace('/', Path.DirectorySeparatorChar));
             if (File.Exists(dest)) conflicts.Add(rel);
         }
         return conflicts;
@@ -71,12 +79,28 @@ public sealed class AgentsTemplateService
             var exists = File.Exists(dest);
             if (exists && !overwriteConflicts)
             {
+                skipped.Add(".agents/" + rel);
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            var bytes = ReadAsset(AgentsPrefix, rel);
+            await File.WriteAllBytesAsync(dest, bytes);
+            written.Add(".agents/" + rel);
+        }
+
+        foreach (var rel in RootRelativePaths())
+        {
+            var dest = Path.Combine(workspacePath, rel.Replace('/', Path.DirectorySeparatorChar));
+            var exists = File.Exists(dest);
+            if (exists && !overwriteConflicts)
+            {
                 skipped.Add(rel);
                 continue;
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            var bytes = ReadAsset(rel);
+            var bytes = ReadAsset(RootPrefix, rel);
             await File.WriteAllBytesAsync(dest, bytes);
             written.Add(rel);
         }
