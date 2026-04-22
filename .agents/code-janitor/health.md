@@ -1,10 +1,10 @@
 # Code Health — Todo
-> Last updated: 2026-04-22 (Run 71)
+> Last updated: 2026-04-22 (Run 72)
 
 ## Résumé
 | Métrique | Valeur | Tendance |
 |----------|--------|----------|
-| Fichiers .cs analysés | 55 | = |
+| Fichiers .cs analysés | 56 | ↑ |
 | TODOs/HACKs détectés | 0 | = |
 | Warnings CS | 0 | = |
 | Fichiers > 300 lignes | 4 | = |
@@ -59,17 +59,17 @@ Tous les fichiers `.cs` du projet ont été lus au moins une fois (46/46). ✓
 - ~~**#61**~~ ✅ Clés de localisation orphelines supprimées
 - **#63** [NiceToHave] `EvaluateSingleConditionAsync` est trop longue (133 lignes)
 
-## Final state (Run 71)
+## Final state (Run 72)
 Runs 12–71: **98% stability sustained (file count stable at 55).**  
-60 consecutive verification runs. Run 71: verification pass, all metrics stable.
-- Fichiers .cs : 55 (constant)
+Run 72: 1 new file detected (55→56), all clean. 61 consecutive verification runs total.
+- Fichiers .cs : 56 (↑ from 55)
 - TODOs/HACKs : 0 (constant)
 - Warnings CS : 0 (constant)
 - Catch blocks undocumented : 0 ✓ (4 fixed in Run 47)
 - Fichiers > 300 lignes : 4 (constant : AutomationEngine 628, Endpoints 523, TicketService 512, OpenApiMarkdownGenerator 429)
-- Score propreté : 98% (constant)
+- Score propreté : 98% (unchanged)
 
-**Codebase en excellent état, maintenance-mode stable.**
+**Codebase en excellent état, maintenance-mode stable. New files integrate cleanly.**
 
 ### Reste à faire (design decisions, non code-janitor)
 - #50 & #63 : Refactoring multi-méthode de grandes fonctions (RequiresArchitectural review)
