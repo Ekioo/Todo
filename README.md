@@ -21,18 +21,14 @@ On first launch an onboarding popup detects whether `claude` and `git` are avail
 
 ### Run
 
-```bash
-cd KittyClaw.Web
-dotnet run --launch-profile http
+From the repo root:
+
+```
+run.bat        (Windows)
+./run.sh       (macOS / Linux)
 ```
 
-The app is available at **http://localhost:5230**.
-
-For hot reload during development:
-
-```bash
-dotnet watch --launch-profile http
-```
+Both wrap `dotnet watch --project KittyClaw.Web --non-interactive` and serve the app at **http://localhost:5230** with hot reload enabled.
 
 ### Creating a project
 
