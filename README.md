@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="branding/KittyClaw.png" alt="KittyClaw" width="220" />
+</p>
+
 # KittyClaw
 
 A kanban board that **orchestrates agentic projects**. Each column is a workflow stage (`Backlog`, `Todo`, `InProgress`, `Review`, `Done`, `Blocked`). Each project has members that can be human owners or **LLM agents** (programmer, groomer, producer, qa-tester, committer, code-janitor, evaluator). A background `AutomationEngine` dispatches these agents based on triggers (column changes, comments, intervals, git commits, …), running them as `claude` CLI subprocesses whose output streams into an in-app drawer.

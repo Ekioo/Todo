@@ -2802,6 +2802,36 @@ details[open] .tool-call-summary::before { transform: rotate(90deg); }
     margin-top: 0.5rem;
 }
 
+.home-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.home-logo-horizontal {
+    height: 56px;
+    width: auto;
+    object-fit: contain;
+}
+
+.onboarding-dialog {
+    text-align: center;
+}
+
+.onboarding-dialog h2,
+.onboarding-dialog p,
+.onboarding-dialog h3 {
+    text-align: left;
+}
+
+.onboarding-logo {
+    display: block;
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 0.75rem;
+    object-fit: contain;
+}
+
 .onboarding-check {
     display: flex;
     align-items: center;

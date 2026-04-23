@@ -17,8 +17,8 @@
 
 @if (!_showOnboarding)
 {
-<div class="page-header">
-    <h1>@L["Projects"]</h1>
+<div class="page-header home-header">
+    <img src="/KittyClaw-Logo-Horizontal.webp" alt="KittyClaw" class="home-logo-horizontal" />
 </div>
 
 <div class="project-list">
@@ -71,7 +71,8 @@
 @if (_showOnboarding)
 {
     <div class="modal-backdrop">
-        <div class="modal-dialog" @onclick:stopPropagation>
+        <div class="modal-dialog onboarding-dialog" @onclick:stopPropagation>
+            <img src="/KittyClaw.webp" alt="KittyClaw" class="onboarding-logo" />
             <h2>@L["OnboardingTitle"]</h2>
             <p>@L["OnboardingIntro1"]</p>
             <p>@L["OnboardingIntro2"]</p>
